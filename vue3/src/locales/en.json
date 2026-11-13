@@ -1026,5 +1026,6 @@
   "view_recipe": "View Recipe",
   "warning_duplicate_filter": "Warning: Due to technical limitations having multiple filters of the same combination (and/or/not) might yield unexpected results.",
   "warning_feature_beta": "This feature is currently in a BETA (testing) state. Please expect bugs and possibly breaking changes in the future (possibly losing feature-related data) when using this feature.",
-  "warning_space_delete": "You can delete your space including all recipes, shopping lists, meal plans and whatever else you have created. This cannot be undone! Are you sure you want to do this ?"
+  "warning_space_delete": "You can delete your space including all recipes, shopping lists, meal plans and whatever else you have created. This cannot be undone! Are you sure you want to do this ?",
+  "AIImportLinkHint": "Fetch the page and let AI build a complete recipe from it."
 }

@@ -152,6 +152,7 @@
                                             <v-btn-toggle class="mb-2" border divided v-model="aiMode">
                                                 <v-btn value="file">{{ $t('File') }}</v-btn>
                                                 <v-btn value="text">{{ $t('Text') }}</v-btn>
+                                                <v-btn value="link">{{ $t('Website') }}</v-btn>
                                             </v-btn-toggle>
                                         </v-col>
                                     </v-row>
@@ -167,6 +168,11 @@
 
                                     <v-textarea v-model="sourceImportText" :loading="loading" autofocus v-if="aiMode == 'text'"
                                                 @keydown.enter="loadRecipeFromAiImport()"></v-textarea>
+
+                                    <v-text-field v-if="aiMode == 'link'" :label="$t('Website') + ' (https://...)'"
+                                                  v-model="importUrl" :loading="loading" autofocus
+                                                  :hint="$t('AIImportLinkHint')" persistent-hint
+                                                  @keydown.enter="loadRecipeFromAiImportUrl()"></v-text-field>
                                 </div>
 
                                 <v-textarea v-model="sourceImportText" label="JSON/HTML" :loading="loading" v-if="importType == 'source'" :hint="$t('SourceImportHelp')"
@@ -193,8 +199,11 @@
                                         <v-btn @click="loadRecipeFromUrl({data: sourceImportText})" v-if="importType == 'source'" :disabled="sourceImportText == ''"
                                                :loading="loading">{{ $t('Load') }}
                                         </v-btn>
-                                        <v-btn @click="loadRecipeFromAiImport()" v-if="importType == 'ai'"
+                                        <v-btn @click="loadRecipeFromAiImport()" v-if="importType == 'ai' && aiMode != 'link'"
                                                :disabled="(aiMode == 'file' && image == null) || (aiMode == 'text' && sourceImportText == '')" :loading="loading">{{ $t('Load') }}
+                                        </v-btn>
+                                        <v-btn @click="loadRecipeFromAiImportUrl()" v-if="importType == 'ai' && aiMode == 'link'"
+                                               :disabled="importUrl == ''" :loading="loading">{{ $t('Load') }}
                                         </v-btn>
                                     </template>
                                 </v-stepper-actions>
@@ -652,7 +661,7 @@ const params = useUrlSearchParams('history', {})
 const {mobile} = useDisplay()
 const router = useRouter()
 const {t} = useI18n()
-const {updateRecipeImage, doAiImport, doAppImport, fileApiLoading} = useFileApi()
+const {updateRecipeImage, doAiImport, doAiImportFromSource, doAppImport, fileApiLoading} = useFileApi()
 const {getFullUrl} = useDjangoUrls()
 
 const bookmarkletContent = computed(() => {
@@ -688,7 +697,7 @@ const appImportShoppingLists = ref(true)
 const appImportNutritionsPerServing = ref(false)
 const appImportLog = ref<null | ImportLog>(null)
 const image = ref<null | File>(null)
-const aiMode = ref<'file' | 'text'>('file')
+const aiMode = ref<'file' | 'text' | 'link'>('file')
 const selectedAiProvider = ref<undefined | AiProvider>(useUserPreferenceStore().activeSpace.aiDefaultProvider)
 const editAfterImport = ref(false)
 
@@ -764,6 +773,43 @@ function loadRecipeFromUrl(recipeFromSourceRequest: RecipeFromSource) {
 /**
  * upload file to conversion endpoint
  */
+/**
+ * URL into a recipe through the ai_import plugin.
+ *
+ * The plain AI import needs a file or pasted text and crawls nothing; the
+ * plain URL import returns whatever the page published. This asks for both:
+ * the plugin fetches the page, has the model shape it, and validates foods,
+ * units and tags against this space before the draft reaches the dialog.
+ */
+function loadRecipeFromAiImportUrl() {
+    if (selectedAiProvider.value == undefined) {
+        useMessageStore().addError(ErrorMessageType.CREATE_ERROR, "No AI Provider selected")
+        return
+    }
+    if (importUrl.value == '') {
+        return
+    }
+
+    loading.value = true
+    doAiImportFromSource(selectedAiProvider.value.id!, importUrl.value)
+        .then(r => {
+            loading.value = false
+            importResponse.value = r
+
+            if (!importResponse.value.error) {
+                if (importResponse.value.images && importResponse.value.images.length > 0) {
+                    stepper.value = 'image_chooser'
+                } else {
+                    stepper.value = 'keywords_chooser'
+                }
+            }
+        })
+        .catch(err => {
+            loading.value = false
+            useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
+        })
+}
+
 function loadRecipeFromAiImport() {
     let request = null
 
