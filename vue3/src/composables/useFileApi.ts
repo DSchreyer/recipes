@@ -114,6 +114,39 @@ export function useFileApi() {
     }
 
     /**
+     * URL (or free text) into a recipe through the ai_import plugin.
+     *
+     * Tandoor's own `/api/recipe-from-source/` returns what the page published,
+     * so a Chefkoch page without usable structured data becomes a three-step
+     * recipe under a marketing title. The plugin fetches the page, has the
+     * household's own AiProvider shape it, then checks every food, unit and
+     * tag against this space before answering in the shape the import dialog
+     * already consumes.
+     *
+     * Nothing is saved here on purpose: the dialog shows the draft, the
+     * household corrects it and saves. An import nobody reviewed is how a
+     * recipe library rots.
+     */
+    function doAiImportFromSource(providerId: number, url: string = '', text: string = '') {
+        fileApiLoading.value = true
+
+        return fetch(getDjangoUrl(`plugins/ai-import/from-source/`), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ai_provider_id: providerId, url, text}),
+        }).then(r => {
+            return r.json().then(r => {
+                return RecipeFromSourceResponseFromJSON(r)
+            })
+        }).finally(() => {
+            fileApiLoading.value = false
+        })
+    }
+
+    /**
      * uploads the given files to the app import endpoint
      * @param files array to import
      * @param app app to import
@@ -149,5 +182,12 @@ export function useFileApi() {
         })
     }
 
-    return {fileApiLoading, createOrUpdateUserFile, updateRecipeImage, doAiImport, doAppImport}
+    return {
+        fileApiLoading,
+        createOrUpdateUserFile,
+        updateRecipeImage,
+        doAiImport,
+        doAiImportFromSource,
+        doAppImport,
+    }
 }
