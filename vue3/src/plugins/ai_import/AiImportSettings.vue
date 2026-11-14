@@ -48,10 +48,8 @@
             <v-card-text>
                 <div v-for="(step, index) in previewResult.steps" :key="index" class="mb-4">
                     <p class="text-subtitle-2">{{ index + 1 }}. {{ step.name }}</p>
-                    <p class="text-body-2" style="white-space: pre-wrap">{{ readable(step.instruction) }}</p>
-                    <p v-if="step.ingredients && step.ingredients.length" class="text-caption text-medium-emphasis">
-                        {{ ingredientsLine(step) }}
-                    </p>
+                    <p class="text-body-2" style="white-space: pre-wrap">{{ readable(step) }}</p>
+
                 </div>
             </v-card-text>
         </v-card>
@@ -121,16 +119,23 @@ function apply(data: any) {
     stored.value = data.stored
 }
 
-/** The preview returns template placeholders; show them the way Tandoor will. */
-function readable(text: string) {
-    return (text || '').replace(/\{\{\s*ingredients\[\d+\]\s*\}\}/g, '[Zutat]')
-}
-
-function ingredientsLine(step: any) {
-    return (step.ingredients || [])
-        .filter((i: any) => !i.is_header)
-        .map((i: any) => [i.amount, i.unit?.name, i.food?.name].filter(Boolean).join(' '))
-        .join(' · ')
+/**
+ * The preview returns template placeholders; render them the way Tandoor will
+ * -- amount, unit and food -- instead of showing the syntax. A preview that
+ * writes "[Zutat]" answers "does this prompt work" with "no idea".
+ */
+function readable(step: any) {
+    const ingredients = step.ingredients || []
+    return (step.instruction || '').replace(
+        /\{\{\s*ingredients\[(\d+)\]\s*\}\}/g,
+        (_match: string, index: string) => {
+            const ingredient = ingredients[Number(index)]
+            if (!ingredient) return ''
+            return [ingredient.amount, ingredient.unit?.name, ingredient.food?.name]
+                .filter((part: any) => part !== null && part !== undefined && part !== '')
+                .join(' ')
+        },
+    )
 }
 
 function load() {
