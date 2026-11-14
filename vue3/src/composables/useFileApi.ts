@@ -130,7 +130,7 @@ export function useFileApi() {
     function doAiImportFromSource(providerId: number, url: string = '', text: string = '') {
         fileApiLoading.value = true
 
-        return fetch(getDjangoUrl(`plugins/ai-import/from-source/`), {
+        return fetch(getDjangoUrl(`api/plugins/ai-import/from-source/`), {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
