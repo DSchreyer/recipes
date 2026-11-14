@@ -6,7 +6,7 @@ Branch `ai-import-ui`, commit `93d2192`. Built in a worktree at
 
 ## What was missing
 
-The `ai_import` plugin (`POST /plugins/ai-import/from-source/`) turns a URL
+The `ai_import` plugin (`POST /api/plugins/ai-import/from-source/`) turns a URL
 into a validated recipe draft. Nothing in the web UI called it: the import
 dialog offered File and Text under AI, and a plain URL field that talks to
 Tandoor's own scraper.
@@ -23,7 +23,7 @@ vue3/src/pages/RecipeImportPage.vue    aiMode 'link', URL field, handler
 vue3/src/locales/{de,en}.json          AIImportLinkHint
 ```
 
-The handler posts to `plugins/ai-import/from-source/` with the session token
+The handler posts to `api/plugins/ai-import/from-source/` with the session token
 and CSRF header, then feeds the answer into the dialog's existing flow — the
 same `importResponse`, the same image chooser, the same keyword chooser.
 
@@ -44,7 +44,7 @@ Against a container built from this branch, talking to the live LiteLLM and
 the same database as production:
 
 ```
-POST /plugins/ai-import/from-source/  {"url": "https://holunderweg18.de/zimtschnecken-rezept/"}
+POST /api/plugins/ai-import/from-source/  {"url": "https://holunderweg18.de/zimtschnecken-rezept/"}
 → name: Schwedische Zimtschnecken
   steps: 8
   unknown_foods: []
