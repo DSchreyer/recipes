@@ -18,7 +18,7 @@ to say "I want to cook X" at all. That is the gap.
 
 ## What the plugin does
 
-`POST /plugins/ai-import/from-source/`
+`POST /api/plugins/ai-import/from-source/`
 
 ```json
 {"url": "https://...", "ai_provider_id": 3}

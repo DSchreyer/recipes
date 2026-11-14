@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(
     not (os.environ.get('E2E_URL') and os.environ.get('LITELLM_MASTER_KEY')),
     reason='live model test; set E2E_URL and LITELLM_MASTER_KEY')
 
-URL = '/plugins/ai-import/from-source/'
+URL = '/api/plugins/ai-import/from-source/'
 
 
 @pytest.mark.django_db

@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 pytestmark = pytest.mark.django_db
 
-URL = '/plugins/ai-import/from-source/'
+URL = '/api/plugins/ai-import/from-source/'
 
 ANSWER = {
     'name': 'Spaghetti Carbonara',

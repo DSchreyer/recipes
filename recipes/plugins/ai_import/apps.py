@@ -11,7 +11,12 @@ class AiImportConfig(AppConfig):
     VERSION = '0.1.0'
     website = 'https://github.com/DSchreyer/recipes'
     github = 'DSchreyer/recipes'
-    base_url = 'plugins/ai-import/'
+    # Must live under /api/: Tandoor's ScopeMiddleware authenticates an
+    # X-Session-Token or an OAuth bearer only for paths starting with /api/,
+    # and redirects every other path to the login page before the view runs.
+    # Mounted at /plugins/ the endpoint answered 302 for a valid token while
+    # /api/ai-step-sort/ next to it answered 400 - measured 2026-11-14.
+    base_url = 'api/plugins/ai-import/'
     nav_main = ''
     nav_dropdown = ''
     api_router_name = ''
