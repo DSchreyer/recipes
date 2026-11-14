@@ -34,6 +34,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import prompt, shaping, source
+from .images import images_from_html
+from .models import settings_for
 from .vocabulary import (food_index, food_suggestions, keyword_index,
                          resolve_keywords, space_foods, space_units)
 
@@ -117,9 +119,10 @@ class FromSourceView(APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         url = (serializer.validated_data.get('url') or '').strip()
+        html = ''
         try:
             if url:
-                text, canonical = source.source_from_url(url)
+                text, canonical, html = source.source_and_images_from_url(url)
                 source_kind = 'url'
             else:
                 text, canonical = source.source_from_text(serializer.validated_data['text']), ''
@@ -127,6 +130,7 @@ class FromSourceView(APIView):
         except source.FetchError as exc:
             return Response({'error': True, 'msg': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        space_settings = settings_for(request.space)
         vocab = _vocabulary(request.space)
         messages = prompt.build_messages(
             text,
@@ -135,6 +139,7 @@ class FromSourceView(APIView):
             known_units=vocab['units'],
             known_tags=vocab['tags'],
             language=serializer.validated_data.get('language') or 'de',
+            custom_prompt=space_settings.custom_prompt,
         )
 
         litellm.callbacks = [AiCallbackHandler(request.space, request.user, provider, AiLog.F_FILE_IMPORT)]
@@ -174,6 +179,10 @@ class FromSourceView(APIView):
                 units=vocab['unit_index'],
                 foods=vocab['food_index'],
                 keywords=keywords,
+                options={
+                    'placeholders_enabled': space_settings.placeholders_enabled,
+                    'enforce_step_titles': space_settings.enforce_step_titles,
+                },
             )
         except shaping.ShapeError as exc:
             return Response({'error': True, 'msg': f'Die AI-Antwort war unbrauchbar: {exc}'},
@@ -187,9 +196,13 @@ class FromSourceView(APIView):
                 duplicates = list(Recipe.objects.filter(space=request.space, source_url=canonical)
                                   .values('id', 'name'))
 
+        images = []
+        if space_settings.images_enabled and html:
+            images = images_from_html(html, canonical or url)
+
         return Response({
             'recipe': recipe,
-            'images': [],
+            'images': images,
             'duplicates': duplicates,
             'unknown_foods': food_suggestions(request.space, proposed_foods),
             'rejected_tags': rejected_tags,

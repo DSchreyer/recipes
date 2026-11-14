@@ -193,3 +193,153 @@ class TestMountPoint:
 
         assert AiImportConfig.base_url.startswith('api/')
         assert URL.startswith('/api/plugins/ai-import/')
+
+
+class TestStepTitles:
+    """A step must never lose its instruction to a title.
+
+    The first version of lift_title(instruction, name) was called as
+    lift_title(name, instruction), so a step without a title had its text moved
+    into the title field and an empty instruction. Recipe 199 on the live
+    instance showed seven untitled steps; this pins the opposite failure.
+    """
+
+    def test_plain_instruction_keeps_its_text(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Mehl abwiegen und sieben.'}]},
+            units={}, foods={}, keywords=[])
+        step = payload['steps'][0]
+        assert step['instruction'] == 'Mehl abwiegen und sieben.'
+        assert step['name']
+
+    def test_bold_title_in_text_is_moved_to_the_name_field(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': '**Teig ansetzen**\nMehl und Zucker verrühren.'}]},
+            units={}, foods={}, keywords=[])
+        step = payload['steps'][0]
+        assert step['name'] == 'Teig ansetzen'
+        assert step['instruction'] == 'Mehl und Zucker verrühren.'
+
+    def test_whole_instruction_in_bold_is_not_a_title(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': '**Alles miteinander verrühren und servieren**'}]},
+            units={}, foods={}, keywords=[])
+        assert payload['steps'][0]['instruction'] == '**Alles miteinander verrühren und servieren**'
+
+    def test_step_number_prefix_is_dropped(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Schritt 1: Mehl abwiegen.'}]},
+            units={}, foods={}, keywords=[])
+        assert 'Schritt 1' not in payload['steps'][0]['instruction']
+
+    def test_title_the_model_put_in_the_right_field_is_kept(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'name': 'Teig ansetzen', 'instruction': 'Mehl abwiegen.'}]},
+            units={}, foods={}, keywords=[])
+        assert payload['steps'][0]['name'] == 'Teig ansetzen'
+
+    def test_titles_can_be_switched_off(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': '**Teig ansetzen**\nMehl abwiegen.'}]},
+            units={}, foods={}, keywords=[], options={'enforce_step_titles': False})
+        step = payload['steps'][0]
+        assert step['name'] == ''
+        assert step['instruction'].startswith('**Teig')
+
+
+class TestPlaceholders:
+    def test_first_mention_becomes_a_positional_placeholder(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Weizenmehl und Rohrzucker verrühren, dann das Weizenmehl sieben.',
+                                        'ingredients': [
+                                            {'amount': 450, 'unit': 'Gramm', 'food': 'Weizenmehl'},
+                                            {'amount': 75, 'unit': 'Gramm', 'food': 'Rohrzucker'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        text = payload['steps'][0]['instruction']
+        assert text.startswith('{{ ingredients[0] }} und {{ ingredients[1] }}')
+        # one replacement per ingredient: the second mention stays prose
+        assert 'dann das Weizenmehl sieben' in text
+
+    def test_longer_food_name_wins_the_overlap(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Vollkornweizenmehl und Weizenmehl mischen.',
+                                        'ingredients': [
+                                            {'amount': 1, 'unit': 'kg', 'food': 'Vollkornweizenmehl'},
+                                            {'amount': 2, 'unit': 'kg', 'food': 'Weizenmehl'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        text = payload['steps'][0]['instruction']
+        assert text.startswith('{{ ingredients[0] }}')
+        assert '{{ ingredients[1] }}' in text
+
+    def test_amount_written_beside_the_name_is_replaced_whole(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': '450 g Weizenmehl in eine Schüssel geben.',
+                                        'ingredients': [{'amount': 450, 'unit': 'Gramm', 'food': 'Weizenmehl'}]}]},
+            units={}, foods={}, keywords=[])
+        text = payload['steps'][0]['instruction']
+        assert text.startswith('{{ ingredients[0] }} in eine Schüssel')
+        assert '450' not in text
+
+    def test_group_headers_get_no_placeholder(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Alles verrühren.',
+                                        'ingredients': [
+                                            {'amount': 0, 'unit': '', 'food': '', 'note': 'Für den Teig',
+                                             'is_header': True, 'no_amount': True},
+                                            {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        assert payload['steps'][0]['instruction'] == 'Alles verrühren.'
+
+    def test_placeholders_can_be_switched_off(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Mehl abwiegen.',
+                                        'ingredients': [{'amount': 1, 'unit': 'kg', 'food': 'Mehl'}]}]},
+            units={}, foods={}, keywords=[], options={'placeholders_enabled': False})
+        assert payload['steps'][0]['instruction'] == 'Mehl abwiegen.'
+
+
+class TestImages:
+    HTML = '''
+      <html><head>
+        <meta property="og:image" content="https://site.example/dish.jpg">
+        <meta name="twitter:image" content="https://site.example/dish-social.jpg">
+      </head><body>
+        <img src="/images/logo.svg">
+        <img src="/images/ad-banner.png">
+        <img data-src="https://site.example/photos/step-1.webp">
+        <img srcset="https://site.example/photos/zimt-600.jpg 600w, https://site.example/photos/zimt-1200.jpg 1200w">
+        <img src="data:image/png;base64,AAAA">
+        <img src="https://other.example/pixel.gif">
+      </body></html>
+    '''
+
+    def test_page_photo_comes_first(self):
+        from recipes.plugins.ai_import.images import images_from_html
+        images = images_from_html(self.HTML, 'https://site.example/recipe')
+        assert images[0] == 'https://site.example/dish.jpg'
+
+    def test_logos_banners_and_trackers_are_dropped(self):
+        from recipes.plugins.ai_import.images import images_from_html
+        images = images_from_html(self.HTML, 'https://site.example/recipe')
+        joined = ' '.join(images)
+        assert 'logo' not in joined and 'ad-banner' not in joined
+        assert 'pixel' not in joined
+
+    def test_lazy_and_srcset_images_are_included(self):
+        from recipes.plugins.ai_import.images import images_from_html
+        images = images_from_html(self.HTML, 'https://site.example/recipe')
+        assert 'https://site.example/photos/step-1.webp' in images
+        assert 'https://site.example/photos/zimt-600.jpg' in images
+
+    def test_relative_urls_resolve_against_the_page(self):
+        from recipes.plugins.ai_import.images import images_from_html
+        images = images_from_html('<img src="/foto.jpg">', 'https://site.example/a/b')
+        assert images == ['https://site.example/foto.jpg']
+
+    def test_list_is_capped(self):
+        from recipes.plugins.ai_import.images import MAX_IMAGES, images_from_html
+        html = ''.join(f'<img src="/p/{i}.jpg">' for i in range(40))
+        assert len(images_from_html(html, 'https://x.example/')) == MAX_IMAGES

@@ -94,5 +94,15 @@ def source_from_url(url: str) -> tuple[str, str]:
     return html_to_text(fetch_html(url)), url
 
 
+def source_and_images_from_url(url: str) -> tuple[str, str, str]:
+    """``(text, canonical_url, raw_html)`` -- the page is fetched once.
+
+    A second fetch for the images would double the wait and could answer from a
+    different cache state than the text.
+    """
+    html = fetch_html(url)
+    return html_to_text(html), url, html
+
+
 def source_from_text(text: str) -> str:
     return (text or '').strip()[:MAX_SOURCE_CHARS]

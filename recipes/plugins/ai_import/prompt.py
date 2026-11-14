@@ -80,12 +80,19 @@ RULES = """Regeln:
 
 
 def build_messages(source: str, *, source_kind: str, known_foods: list[str],
-                   known_units: list[str], known_tags: list[str], language: str = 'de') -> list[dict]:
+                   known_units: list[str], known_tags: list[str], language: str = 'de',
+                   custom_prompt: str = '') -> list[dict]:
     """Prompt messages for one import.
 
     ``known_*`` are the space's own vocabulary. They are passed as a
     newline-separated list rather than JSON so a long food list costs few
     tokens; 700 foods fit comfortably next to the recipe text.
+
+    ``custom_prompt`` is the space's own extra instruction. It is appended
+    after the rules rather than mixed into them, because the rules are what
+    stop invented amounts and dropped units -- a preference field must not be
+    able to delete them. It is placed last so it is the most recent
+    instruction the model reads.
     """
     kind = 'Rezeptseite' if source_kind == 'url' else 'Beschreibung des Gerichts'
     user = '\n'.join([
@@ -95,6 +102,9 @@ def build_messages(source: str, *, source_kind: str, known_foods: list[str],
         f'Bekannte Einheiten:\n' + ', '.join(sorted(known_units)),
         f'Erlaubte Tags:\n' + '\n'.join(sorted(known_tags)),
         f'Ausgabe-Sprache: {language}',
+        *([f'Zusätzliche Anweisungen des Haushalts (gehen den Regeln oben vor, wo sie '
+           f'sich auf Stil und Kürze beziehen, aber nicht bei Punkt 3 bis 6):\n{custom_prompt.strip()}']
+          if (custom_prompt or '').strip() else []),
         f'Quelle ({kind}):',
         source,
     ])
