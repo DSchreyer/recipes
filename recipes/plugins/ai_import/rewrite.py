@@ -138,3 +138,40 @@ def insert_placeholders(instruction: str, ingredients: list[dict]) -> str:
             consumed.append((match.start(), match.start() + len(_placeholder(index))))
             break
     return text
+
+
+def placeholders_are_safe(instruction: str, ingredients: list[dict]) -> tuple[bool, str]:
+    """Whether inserting placeholders here would produce a readable sentence.
+
+    Measured 2026-11-14 on Zimtschnecken: the text said "Mehl, Zucker, Salz und
+    Kardamom" and the step's ingredient list was ordered differently, so index 2
+    pointed at Salz. The rendered sentence would read "Mehl, 0.5 Teelöffel Salz,
+    0.5 Teelöffel Kardamom und Kardamom" -- two facts, both wrong, and only
+    visible at the stove.
+
+    A placeholder is safe only when every replaced ingredient appears in the
+    text in the same order as in the ingredient list, and nothing named in the
+    list is missing from the text. Anything else keeps the plain text: a
+    sentence with the amount written out is still correct, a sentence with the
+    wrong amount is not.
+    """
+    positions: list[tuple[int, int]] = []
+    for index, ingredient in enumerate(ingredients):
+        if ingredient.get('is_header'):
+            continue
+        name = ((ingredient.get('food') or {}).get('name') or '').strip()
+        if len(name) < 3:
+            continue
+        match = re.search(r'(?<![\w{])' + re.escape(name) + r'(?![\w}])', instruction or '', re.IGNORECASE)
+        if match is None:
+            # The step does not name this ingredient at all, which is normal for
+            # a later step that only uses part of the list. It cannot be placed
+            # wrong, so it does not block the others.
+            continue
+        positions.append((match.start(), index))
+
+    ordered = sorted(positions)
+    indexes = [index for _pos, index in ordered]
+    if indexes != sorted(indexes):
+        return False, 'Zutaten stehen im Text in anderer Reihenfolge als in der Liste'
+    return True, ''

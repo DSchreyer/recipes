@@ -173,12 +173,14 @@ class FromSourceView(APIView):
         answer.setdefault('source_url', canonical)
 
         keywords, rejected_tags = resolve_keywords(request.space, answer.get('tags') or [])
+        warnings: list[str] = []
         try:
             recipe = shaping.to_recipe_payload(
                 answer,
                 units=vocab['unit_index'],
                 foods=vocab['food_index'],
                 keywords=keywords,
+                warnings=warnings,
                 options={
                     'placeholders_enabled': space_settings.placeholders_enabled,
                     'enforce_step_titles': space_settings.enforce_step_titles,
@@ -206,4 +208,5 @@ class FromSourceView(APIView):
             'duplicates': duplicates,
             'unknown_foods': food_suggestions(request.space, proposed_foods),
             'rejected_tags': rejected_tags,
+            'warnings': warnings,
         }, status=status.HTTP_200_OK)

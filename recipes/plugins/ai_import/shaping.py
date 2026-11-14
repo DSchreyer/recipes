@@ -19,7 +19,8 @@ from __future__ import annotations
 import json
 import re
 
-from .rewrite import ensure_title, insert_placeholders, lift_title
+from .rewrite import (ensure_title, insert_placeholders, lift_title,
+                      placeholders_are_safe)
 from .vocabulary import food_key, sanitize_instruction, sanitize_title
 
 
@@ -97,7 +98,7 @@ def _step(raw: dict, units: dict, foods: dict) -> dict:
 
 
 def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
-                      options: dict | None = None) -> dict:
+                      options: dict | None = None, warnings: list[str] | None = None) -> dict:
     """The ``recipe`` object Tandoor's import dialog expects.
 
     ``options`` carries the space's switches (``placeholders_enabled``,
@@ -119,15 +120,19 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
     if not steps:
         raise ShapeError('Rezept ohne Schritte')
 
+    warnings = warnings if warnings is not None else []
     enforce_titles = options.get('enforce_step_titles', True)
     placeholders = options.get('placeholders_enabled', True)
-    for step in steps:
+    for number, step in enumerate(steps, 1):
         if enforce_titles:
             step['name'], step['instruction'] = lift_title(step['instruction'], step['name'])
             step['name'] = ensure_title(step['name'], step['instruction'])
         if placeholders:
-            step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
-
+            safe, reason = placeholders_are_safe(step['instruction'], step['ingredients'])
+            if safe:
+                step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
+            else:
+                warnings.append(f'Schritt {number}: {reason}')
     return {
         'name': name,
         'description': sanitize_instruction(answer.get('description') or ''),
