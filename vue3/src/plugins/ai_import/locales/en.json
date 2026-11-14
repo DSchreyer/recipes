@@ -1,0 +1,21 @@
+{
+  "AiImport": "AI Import",
+  "AiImportDefaultsNotice": "These are the defaults. Nothing has been saved for this space yet; change anything and press Save.",
+  "AiImportPlaceholders": "Amounts in step text (scales with servings)",
+  "AiImportImages": "Offer the page's photos",
+  "AiImportStepTitles": "Keep step titles",
+  "AiImportPrompt": "Additional instructions for the AI",
+  "AiImportPromptHelp": "Appended to the built-in rules. The rules that prevent invented amounts and missing units always stay in force.",
+  "AiImportPromptLabel": "Extra prompt",
+  "AiImportPromptPlaceholder": "e.g. Keep it short, no filler words. Do not mention the origin of the dish.",
+  "AiImportExplain": "What these switches do",
+  "AiImportExplainPlaceholders": "Writes an ingredient as a template reference in the step, e.g. \"450 Gramm Weizenmehl\". When you change the servings, the amount follows.",
+  "AiImportExplainImages": "Collects the photos from the imported page so you can pick one in the editor.",
+  "AiImportExplainStepTitles": "Moves a heading the AI wrote into the text back into the step title field. Without it, steps can end up untitled.",
+  "AiImportTestUrl": "Test URL",
+  "AiImportTestUrlHint": "Try this URL with your prompt. Nothing is saved.",
+  "AiImportTest": "Test the prompt",
+  "AiImportUnknownFoods": "foods are not in your library yet",
+  "Steps": "steps",
+  "Saved": "Saved"
+}
