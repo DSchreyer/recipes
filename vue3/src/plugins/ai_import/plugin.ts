@@ -1,5 +1,6 @@
 import type {TandoorPlugin} from "@/types/Plugins.ts";
 import AiImportSettings from "./AiImportSettings.vue";
+import SettingsNavItem from "./SettingsNavItem.vue";
 import en from "./locales/en.json";
 
 /**
@@ -23,9 +24,23 @@ export const plugin: TandoorPlugin = {
     defaultLocale: Promise.resolve(en),
     localeFiles: import.meta.glob('./locales/*.json'),
     routes: [],
-    settingRoutes: [],
+    // A page under Settings -> Space, rendered in the content column, plus a
+    // sidebar entry that links to it.
+    //
+    // `settingsComponent` is NOT used: Tandoor renders that inside the sidebar
+    // <v-list>, so a real settings page dropped into it swallowed the whole
+    // navigation column and pushed the Space form off screen. Measured on the
+    // live instance 2026-11-14 -- the screenshot was the evidence.
+    settingRoutes: [
+        {
+            path: 'ai-import',
+            component: AiImportSettings,
+            name: 'AiImportSettings',
+            meta: {title: 'Settings'},
+        },
+    ],
     navigationDrawer: [],
     bottomNavigation: [],
     userNavigation: [],
-    settingsComponent: AiImportSettings,
+    settingsComponent: SettingsNavItem,
 }
