@@ -1,4 +1,4 @@
-"""``POST /plugins/ai-import/from-source/``
+"""``POST /api/plugins/ai-import/from-source/``
 
 One endpoint, two inputs: a URL to crawl, or free text describing a dish. The
 answer is the same shape Tandoor's import dialog already consumes, so the
