@@ -177,3 +177,19 @@ class TestCompletionModel:
         from recipes.plugins.ai_import.views import completion_model
 
         assert completion_model('openrouter/deepseek/deepseek-v4.1') == 'openrouter/deepseek/deepseek-v4.1'
+
+
+class TestMountPoint:
+    def test_plugin_is_mounted_under_api(self):
+        """A plugin path outside /api/ is redirected to login before it runs.
+
+        Tandoor's ScopeMiddleware only authenticates X-Session-Token and OAuth
+        bearers for ``/api/``. Measured live 2026-11-14: at /plugins/ the
+        endpoint answered 302 for a valid token while /api/ai-step-sort/
+        next to it answered 400.
+        """
+        from recipes.plugins.ai_import.apps import AiImportConfig
+        from recipes.plugins.ai_import.tests.test_view import URL
+
+        assert AiImportConfig.base_url.startswith('api/')
+        assert URL.startswith('/api/plugins/ai-import/')
