@@ -248,6 +248,54 @@ class TestStepTitles:
 
 
 class TestPlaceholders:
+    def test_out_of_order_ingredients_are_left_as_text(self):
+        """Measured on Zimtschnecken 2026-11-14: the sentence named Zucker, Salz,
+        Kardamom but the step listed Salz, Kardamom, Butter. Index 2 pointed at
+        Salz, so the rendered text read "Mehl, 0.5 TL Salz, 0.5 TL Kardamom und
+        Kardamom". Wrong amounts are worse than no amounts."""
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Mehl, Zucker, Salz und Kardamom vermengen.',
+                                        'ingredients': [
+                                            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+                                            {'amount': 0.5, 'unit': 'TL', 'food': 'Salz'},
+                                            {'amount': 0.5, 'unit': 'TL', 'food': 'Kardamom'},
+                                            {'amount': 75, 'unit': 'Gramm', 'food': 'Zucker'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        assert '{{' not in payload['steps'][0]['instruction']
+
+    def test_out_of_order_step_is_reported(self):
+        warnings: list[str] = []
+        shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Salz und Mehl mischen.',
+                                        'ingredients': [
+                                            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+                                            {'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+                                        ]}]},
+            units={}, foods={}, keywords=[], warnings=warnings)
+        assert warnings and 'Reihenfolge' in warnings[0]
+
+    def test_in_order_ingredients_do_get_placeholders(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Salz und Mehl mischen.',
+                                        'ingredients': [
+                                            {'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+                                            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        text = payload['steps'][0]['instruction']
+        assert text.startswith('{{ ingredients[0] }}') and '{{ ingredients[1] }}' in text
+
+    def test_ingredient_missing_from_text_does_not_block_the_others(self):
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': 'Mehl abwiegen.',
+                                        'ingredients': [
+                                            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+                                            {'amount': 75, 'unit': 'Gramm', 'food': 'Butter'},
+                                        ]}]},
+            units={}, foods={}, keywords=[])
+        assert payload['steps'][0]['instruction'].startswith('{{ ingredients[0] }}')
+
     def test_first_mention_becomes_a_positional_placeholder(self):
         payload = shaping.to_recipe_payload(
             {'name': 'Test', 'steps': [{'instruction': 'Weizenmehl und Rohrzucker verrühren, dann das Weizenmehl sieben.',
