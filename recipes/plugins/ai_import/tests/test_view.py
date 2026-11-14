@@ -117,8 +117,8 @@ def test_url_import_returns_import_dialog_shape(client_for, space_1):
         Keyword.objects.create(name='Herkunft::Italien', space=space_1)
     provider = _provider(space_1)
 
-    with patch('recipes.plugins.ai_import.views.source.source_from_url',
-               return_value=('Seitentext', 'https://x/y')):
+    with patch('recipes.plugins.ai_import.views.source.source_and_images_from_url',
+               return_value=('Seitentext', 'https://x/y', '')):
         with patch('recipes.plugins.ai_import.views.litellm.completion', return_value=_answer()) as completion:
             response = client_for.post(URL, {'url': 'https://x/y', 'ai_provider_id': provider.pk}, format='json')
 

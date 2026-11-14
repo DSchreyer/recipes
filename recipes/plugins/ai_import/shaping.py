@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 
+from .rewrite import ensure_title, insert_placeholders, lift_title
 from .vocabulary import food_key, sanitize_instruction, sanitize_title
 
 
@@ -95,13 +96,20 @@ def _step(raw: dict, units: dict, foods: dict) -> dict:
     }
 
 
-def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list) -> dict:
+def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
+                      options: dict | None = None) -> dict:
     """The ``recipe`` object Tandoor's import dialog expects.
+
+    ``options`` carries the space's switches (``placeholders_enabled``,
+    ``enforce_step_titles``) and defaults to the same behaviour as before the
+    switches existed, so a caller that does not pass them gets the old result
+    plus the title fix.
 
     Raises ``ShapeError`` when the answer has no usable name or no step: an
     import that produces an empty recipe is worse than no import, because the
     household only finds out at the stove.
     """
+    options = options or {}
     name = sanitize_title(answer.get('name') or '')
     if not name:
         raise ShapeError('Rezept ohne Namen')
@@ -110,6 +118,15 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list)
     steps = [s for s in steps if s['instruction'] or s['ingredients']]
     if not steps:
         raise ShapeError('Rezept ohne Schritte')
+
+    enforce_titles = options.get('enforce_step_titles', True)
+    placeholders = options.get('placeholders_enabled', True)
+    for step in steps:
+        if enforce_titles:
+            step['name'], step['instruction'] = lift_title(step['instruction'], step['name'])
+            step['name'] = ensure_title(step['name'], step['instruction'])
+        if placeholders:
+            step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
 
     return {
         'name': name,

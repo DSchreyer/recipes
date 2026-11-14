@@ -1052,5 +1052,22 @@
   "warning_duplicate_filter": "Warnung: Wegen technischen Limitierungen können mehrere Filter der selben Kombination (und/oder/nicht) zu unerwarteten Ergebnissen führen.",
   "warning_feature_beta": "Diese Funktion ist aktuell in einer BETA (Test) Phase. Es ist sowohl mit Fehlern, als auch mit zukünftigen Änderungen der Funktionsweise zu rechnen, wodurch es bei Verwendung entsprechender Funktionen zu Datenverlust kommen kann.",
   "warning_space_delete": "Du kannst deinen Space inklusive all deiner Rezepte, Shoppinglisten, Essensplänen und allem anderen, das du erstellt hast, löschen. Dieser Schritt kann nicht rückgängig gemacht werden! Bist du sicher, dass du das tun möchtest?",
-  "AIImportLinkHint": "Seite holen und die KI ein vollständiges Rezept daraus bauen lassen."
+  "AIImportLinkHint": "Seite holen und die KI ein vollständiges Rezept daraus bauen lassen.",
+  "AiImport": "KI-Import",
+  "AiImportDefaultsNotice": "Das sind die Standardwerte. Für diesen Space wurde noch nichts gespeichert; ändere etwas und drücke Speichern.",
+  "AiImportPlaceholders": "Mengen im Schritttext (skaliert mit den Portionen)",
+  "AiImportImages": "Bilder der Seite anbieten",
+  "AiImportStepTitles": "Schritttitel beibehalten",
+  "AiImportPrompt": "Zusätzliche Anweisungen an die KI",
+  "AiImportPromptHelp": "Wird an die eingebauten Regeln angehängt. Die Regeln, die erfundene Mengen und fehlende Einheiten verhindern, bleiben immer in Kraft.",
+  "AiImportPromptLabel": "Zusatz-Prompt",
+  "AiImportPromptPlaceholder": "z. B. Kürzer, keine Floskeln. Erwähne nicht die Herkunft des Gerichts.",
+  "AiImportExplain": "Was diese Schalter tun",
+  "AiImportExplainPlaceholders": "Schreibt eine Zutat als Template-Verweis in den Schritt, z. B. \"450 Gramm Weizenmehl\". Änderst du die Portionen, folgt die Menge.",
+  "AiImportExplainImages": "Sammelt die Bilder der importierten Seite, damit du im Editor eines auswählen kannst.",
+  "AiImportExplainStepTitles": "Hebt eine Überschrift, die die KI in den Text geschrieben hat, zurück in das Titelfeld. Ohne diesen Schalter können Schritte ohne Titel bleiben.",
+  "AiImportTestUrl": "Test-URL",
+  "AiImportTestUrlHint": "Probiert diese URL mit deinem Prompt aus. Nichts wird gespeichert.",
+  "AiImportTest": "Prompt testen",
+  "AiImportUnknownFoods": "Zutaten sind noch nicht in deiner Bibliothek"
 }
