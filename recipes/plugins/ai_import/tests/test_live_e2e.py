@@ -2,10 +2,17 @@
 
     E2E_URL=https://... LITELLM_MASTER_KEY=... pytest .../test_live_e2e.py
 
-The model's output is not asserted -- the point is that a request with the
-real 701-food vocabulary comes back shaped, matched and cost-logged, and that
-it creates no Food and no Unit. The mocked tests assert the parts that must be
-exact.
+The model's output is not asserted -- the point is that a request carrying a
+real vocabulary comes back shaped, matched and cost-logged, and that it creates
+no Food and no Unit. The mocked tests assert the parts that must be exact.
+
+The vocabulary file is your own space's names, exported however you like:
+
+    {"foods": [{"name": "Mehl"}, ...], "keywords": [{"name": "Herkunft::Italien"}, ...]}
+
+`GET /api/food/` and `GET /api/keyword/` return it page by page. Without
+``E2E_VOCAB`` the test uses a small built-in set, so it still runs on a fresh
+checkout -- it just tests less.
 """
 
 import json
@@ -24,25 +31,48 @@ pytestmark = pytest.mark.skipif(
 
 URL = '/api/plugins/ai-import/from-source/'
 
+# Enough to show the pipeline matching and refusing, without pretending to be
+# anyone's library.
+FALLBACK_VOCABULARY = {
+    'foods': [{'name': name} for name in (
+        'Mehl', 'Zucker', 'Salz', 'Butter', 'Milch', 'Ei', 'Hefe', 'Zimt',
+        'Kardamom', 'Parmesan', 'Spaghetti', 'Schinken', 'Eigelb',
+    )],
+    'keywords': [{'name': name} for name in (
+        'Herkunft::Italien', 'Aufwand::Schnell', 'Ernaehrung::Fleisch',
+        'Herkunft::Schweden',
+    )],
+}
+
+
+def _vocabulary() -> dict:
+    path = os.environ.get('E2E_VOCAB')
+    if path and os.path.exists(path):
+        with open(path) as handle:
+            return json.load(handle)
+    return FALLBACK_VOCABULARY
+
 
 @pytest.mark.django_db
 def test_live_import(settings):
-    settings.AI_ALLOWED_URLS = ['http://127.0.0.1:4000/v1']
-    with open(os.environ.get('E2E_VOCAB', '/tmp/opencode/vocab.json')) as handle:
-        vocab = json.load(handle)
+    base_url = os.environ.get('E2E_AI_BASE_URL', 'http://127.0.0.1:4000/v1')
+    model_name = os.environ.get('E2E_MODEL', 'atlas-recipe-global')
+    settings.AI_ALLOWED_URLS = [base_url]
+    vocab = _vocabulary()
     with scopes_disabled():
         sp = Space.objects.create(name='E2E')
         user = User.objects.create(username=f'live{os.getpid()}')
         UserSpace.objects.create(user=user, space=sp, active=True)
         Token.objects.create(user=user)
         prov = AiProvider.objects.create(
-            name='Atlas', space=sp, api_key=os.environ['LITELLM_MASTER_KEY'],
-            model_name='atlas-recipe-global', url='http://127.0.0.1:4000/v1')
+            name='E2E provider', space=sp, api_key=os.environ['LITELLM_MASTER_KEY'],
+            model_name=model_name, url=base_url)
         for food in vocab['foods']:
             Food.objects.create(name=food['name'], space=sp)
         for keyword in vocab['keywords']:
             Keyword.objects.create(name=keyword['name'], space=sp)
-        for unit in ['g', 'kg', 'ml', 'Stück', 'EL', 'TL', 'Prise', 'Bund', 'Zehe']:
+        for unit in ['g', 'kg', 'ml', 'Stück', 'EL', 'TL', 'Prise', 'Bund', 'Zehe',
+                     'Gramm', 'Teelöffel', 'Esslöffel', 'Milliliter', 'Päckchen']:
             Unit.objects.create(name=unit, space=sp)
         before = (Food.objects.count(), Unit.objects.count())
 
@@ -73,7 +103,8 @@ def test_live_import(settings):
     print('keywords:', [k['name'] for k in recipe['keywords']])
     print('rejected:', body['rejected_tags'])
     print('unknown foods:', [f['name'] for f in body['unknown_foods']])
-    print('duplicates:', body['duplicates'])
+    print('warnings:', body.get('warnings'))
+    print('images:', len(body.get('images') or []))
     for number, step in enumerate(recipe['steps'], 1):
         rows = [(i['amount'], i['unit']['name'], i['food']['name']) for i in step['ingredients']]
         print(f'  {number}. {step["name"]}: {step["instruction"][:110]}')
