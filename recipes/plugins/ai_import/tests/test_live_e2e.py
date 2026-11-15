@@ -28,8 +28,17 @@ URL = '/api/plugins/ai-import/from-source/'
 @pytest.mark.django_db
 def test_live_import(settings):
     settings.AI_ALLOWED_URLS = ['http://127.0.0.1:4000/v1']
-    with open(os.environ.get('E2E_VOCAB', '/tmp/opencode/vocab.json')) as handle:
-        vocab = json.load(handle)
+    vocab_path = os.environ.get('E2E_VOCAB')
+    if vocab_path and os.path.exists(vocab_path):
+        with open(vocab_path) as handle:
+            vocab = json.load(handle)
+    else:
+        # A small built-in set so the opt-in test runs on a fresh checkout;
+        # E2E_VOCAB points it at a real space's export instead.
+        vocab = {
+            'foods': [{'name': n} for n in ('Mehl', 'Zucker', 'Salz', 'Butter', 'Ei', 'Milch')],
+            'keywords': [{'name': n} for n in ('Herkunft::Italien', 'Aufwand::Schnell')],
+        }
     with scopes_disabled():
         sp = Space.objects.create(name='E2E')
         user = User.objects.create(username=f'live{os.getpid()}')
