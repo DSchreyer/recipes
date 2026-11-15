@@ -358,7 +358,7 @@
                                     </v-col>
                                     <v-col cols="12" md="6">
                                         <v-textarea class="mt-2" v-model="s.instruction" auto-grow></v-textarea>
-                                        <p v-if="s.placeholder_state && s.placeholder_state !== 'all'"
+                                        <p v-if="s.placeholder_state === 'none' || s.placeholder_state === 'partial'"
                                            class="text-caption text-warning mt-1" style="white-space: normal">
                                             {{ $t(s.placeholder_state === 'partial'
                                                 ? 'AiImportStatePartial' : 'AiImportStateNone') }}
