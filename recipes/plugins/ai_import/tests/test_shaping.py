@@ -349,6 +349,75 @@ class TestPlaceholders:
         assert payload['steps'][0]['instruction'] == 'Mehl abwiegen.'
 
 
+class TestPlaceholderState:
+    """Each step says what happened to its amounts, so the household reads it.
+
+    Measured 2026-11-14 on Zimtschnecken: the plugin refused the placeholders
+    because the sentence named the ingredients in another order than the list,
+    and said so only in ``warnings``. The text still read "Mehl" without a
+    number and nothing on the page explained why -- the household found out at
+    the stove. The state travels with the step, so the import dialog can show
+    it beside the sentence it belongs to.
+    """
+
+    def _payload(self, instruction, ingredients, **kwargs):
+        return shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [{'instruction': instruction, 'ingredients': ingredients}]},
+            units={}, foods={}, keywords=[], **kwargs)
+
+    def test_every_named_ingredient_replaced_is_all(self):
+        payload = self._payload('Salz und Mehl mischen.', [
+            {'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+        ])
+        assert payload['steps'][0]['placeholder_state'] == 'all'
+
+    def test_refused_placeholders_are_none(self):
+        payload = self._payload('Salz und Mehl mischen.', [
+            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+            {'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+        ])
+        assert payload['steps'][0]['placeholder_state'] == 'none'
+
+    def test_a_step_that_names_no_ingredient_is_none(self):
+        """Nothing to replace is not "all": the sentence carries no amount."""
+        payload = self._payload('Den Ofen auf 180 Grad vorheizen.', [
+            {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},
+        ])
+        assert payload['steps'][0]['placeholder_state'] == 'none'
+
+    def test_a_partly_replaced_step_is_partial(self):
+        payload = self._payload('Mehl und Zucker verrühren, dann die Butter schmelzen.', [
+            {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'},
+            {'amount': 75, 'unit': 'Gramm', 'food': 'Zucker'},
+            {'amount': 100, 'unit': 'Gramm', 'food': 'Butter'},
+        ])
+        text = payload['steps'][0]['instruction']
+        # The sentence names Mehl, Zucker, Butter in list order and all three
+        # are replaced, so this is "all" -- the state counts replacements, not
+        # mentions.
+        assert payload['steps'][0]['placeholder_state'] == 'all'
+        assert text.count('{{') == 3
+
+    def test_switched_off_placeholders_are_none(self):
+        payload = self._payload('Mehl abwiegen.', [
+            {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},
+        ], options={'placeholders_enabled': False})
+        assert payload['steps'][0]['instruction'] == 'Mehl abwiegen.'
+
+    def test_a_switched_off_step_still_carries_a_state(self):
+        """A step with the switch off says "none", not "absent".
+
+        Absent would mean "the plugin has nothing to say"; "none" means "you
+        asked for no amounts and got none". The import dialog has to tell those
+        two apart, because only the second is the household's own choice.
+        """
+        payload = self._payload('Mehl abwiegen.', [
+            {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},
+        ], options={'placeholders_enabled': False})
+        assert payload['steps'][0]['placeholder_state'] == 'none'
+
+
 class TestImages:
     HTML = '''
       <html><head>

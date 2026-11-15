@@ -138,8 +138,21 @@ export function useFileApi() {
             },
             body: JSON.stringify({ai_provider_id: providerId, url, text}),
         }).then(r => {
-            return r.json().then(r => {
-                return RecipeFromSourceResponseFromJSON(r)
+            return r.json().then(raw => {
+                const response = RecipeFromSourceResponseFromJSON(raw)
+                // The generated mapper rebuilds every step from a fixed field
+                // list and drops anything it does not know, so the plugin's own
+                // per-step state has to be copied back by index. Without this
+                // the dialog cannot say which step has no amounts.
+                const rawSteps = (raw && raw.recipe && raw.recipe.steps) || []
+                const steps = (response && response.recipe && response.recipe.steps) || []
+                steps.forEach((step: any, index: number) => {
+                    const state = rawSteps[index] && rawSteps[index].placeholder_state
+                    if (state) {
+                        step.placeholder_state = state
+                    }
+                })
+                return response
             })
         }).finally(() => {
             fileApiLoading.value = false

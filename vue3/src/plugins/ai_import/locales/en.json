@@ -17,5 +17,7 @@
   "AiImportTest": "Test the prompt",
   "AiImportUnknownFoods": "foods are not in your library yet",
   "Steps": "steps",
-  "Saved": "Saved"
+  "Saved": "Saved",
+  "AiImportStateNone": "No amounts in this step: the sentence names its ingredients in another order than the list, so a reference could point at the wrong one.",
+  "AiImportStatePartial": "Some amounts in this step could not be placed safely; the rest are in the ingredient table."
 }

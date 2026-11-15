@@ -17,5 +17,7 @@
   "AiImportTest": "Prompt testen",
   "AiImportUnknownFoods": "Zutaten sind noch nicht in deiner Bibliothek",
   "Steps": "Schritte",
-  "Saved": "Gespeichert"
+  "Saved": "Gespeichert",
+  "AiImportStateNone": "Keine Mengen in diesem Schritt: der Satz nennt seine Zutaten in anderer Reihenfolge als die Liste, ein Verweis könnte also auf die falsche zeigen.",
+  "AiImportStatePartial": "Einige Mengen konnten in diesem Schritt nicht sicher eingesetzt werden; die übrigen stehen in der Zutatentabelle."
 }

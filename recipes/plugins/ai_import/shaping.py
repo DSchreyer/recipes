@@ -20,7 +20,7 @@ import json
 import re
 
 from .rewrite import (ensure_title, insert_placeholders, lift_title,
-                      placeholders_are_safe)
+                      placeholder_state, placeholders_are_safe)
 from .vocabulary import food_key, sanitize_instruction, sanitize_title
 
 
@@ -127,12 +127,19 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
         if enforce_titles:
             step['name'], step['instruction'] = lift_title(step['instruction'], step['name'])
             step['name'] = ensure_title(step['name'], step['instruction'])
-        if placeholders:
-            safe, reason = placeholders_are_safe(step['instruction'], step['ingredients'])
-            if safe:
-                step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
-            else:
-                warnings.append(f'Schritt {number}: {reason}')
+        if not placeholders:
+            # The switch is off, so this step never had a chance at an amount.
+            # Saying "none" keeps the field's meaning constant: the dialog can
+            # render one column without a second question.
+            step['placeholder_state'] = 'none'
+            continue
+        safe, reason = placeholders_are_safe(step['instruction'], step['ingredients'])
+        if safe:
+            step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
+            step['placeholder_state'] = placeholder_state(step['instruction'], step['ingredients'])
+        else:
+            step['placeholder_state'] = 'none'
+            warnings.append(f'Schritt {number}: {reason}')
     return {
         'name': name,
         'description': sanitize_instruction(answer.get('description') or ''),
