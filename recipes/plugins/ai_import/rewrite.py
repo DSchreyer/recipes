@@ -175,3 +175,52 @@ def placeholders_are_safe(instruction: str, ingredients: list[dict]) -> tuple[bo
     if indexes != sorted(indexes):
         return False, 'Zutaten stehen im Text in anderer Reihenfolge als in der Liste'
     return True, ''
+
+
+def named_ingredients(instruction: str, ingredients: list[dict]) -> int:
+    """How many distinct ingredients this sentence names.
+
+    Read from the sentence *before* substitution: afterwards the food names are
+    gone and only ``{{ ingredients[n] }}`` is left, so counting from the
+    finished text always says zero.
+    """
+    text = instruction or ''
+    named = 0
+    for ingredient in ingredients or []:
+        if ingredient.get('is_header'):
+            continue
+        name = ((ingredient.get('food') or {}).get('name') or '').strip()
+        if len(name) < 3:
+            continue
+        if re.search(r'(?<![\w{])' + re.escape(name) + r'(?![\w}])', text, re.IGNORECASE):
+            named += 1
+    return named
+
+
+def placeholder_state(instruction: str, ingredients: list[dict]) -> str:
+    """What became of this step's amounts: ``all``, ``partial`` or ``none``.
+
+    Called on the finished instruction together with the ingredients, and the
+    count is taken from the placeholders, because the names are gone by then.
+
+    Measured 2026-11-14 on Zimtschnecken: the plugin refused the placeholders
+    and said so only in ``warnings``, so the text read "Mehl" without a number
+    and nothing on the page explained why. The household found out at the stove.
+
+    * ``all`` -- every ingredient the step lists carries a placeholder;
+    * ``partial`` -- some do, some do not;
+    * ``none`` -- none do, which is honest for a step that names no
+      ingredient at all.
+    """
+    text = instruction or ''
+    replaced = len(re.findall(r'\{\{\s*ingredients\[\d+\]\s*\}\}', text))
+    available = sum(
+        1 for ingredient in (ingredients or [])
+        if not ingredient.get('is_header')
+        and len(((ingredient.get('food') or {}).get('name') or '').strip()) >= 3
+    )
+    if replaced == 0 or available == 0:
+        return 'none'
+    if replaced >= available:
+        return 'all'
+    return 'partial'

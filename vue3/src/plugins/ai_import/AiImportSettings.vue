@@ -49,7 +49,12 @@
                 <div v-for="(step, index) in previewResult.steps" :key="index" class="mb-4">
                     <p class="text-subtitle-2">{{ index + 1 }}. {{ step.name }}</p>
                     <p class="text-body-2" style="white-space: pre-wrap">{{ readable(step) }}</p>
-
+                    <p v-if="step.placeholder_state && step.placeholder_state !== 'all'"
+                       class="text-caption text-warning mt-1">
+                        <v-icon size="small" icon="fa-solid fa-circle-info" class="mr-1"></v-icon>
+                        {{ $t(step.placeholder_state === 'partial'
+                            ? 'AiImportStatePartial' : 'AiImportStateNone') }}
+                    </p>
                 </div>
             </v-card-text>
         </v-card>
@@ -137,6 +142,13 @@ function readable(step: any) {
         },
     )
 }
+
+/**
+ * Why a step shows no amount. The plugin refuses a placeholder when the
+ * ingredients are named out of order, because a positional reference would then
+ * point at the wrong jar. That refusal is a fact about the sentence, so it is
+ * said in the reading order of the sentence.
+ */
 
 function load() {
     fetch(endpoint('settings'), {headers: {'Accept': 'application/json'}})

@@ -225,3 +225,46 @@ def test_unauthenticated_is_refused(space_1):
         response = APIClient().post(URL, {'text': 'x', 'ai_provider_id': provider.pk}, format='json')
     assert response.status_code in (302, 401, 403)
     completion.assert_not_called()
+
+
+def test_every_step_reports_what_happened_to_its_amounts(client_for, space_1):
+    """The dialog needs the state per step, not a summary.
+
+    "Schritt 3 und 5 haben keine Mengen" makes the reader count; a state on the
+    step lets the panel put the note under the sentence it belongs to.
+    """
+    provider = _provider(space_1)
+    answer = {
+        'name': 'Test',
+        'steps': [
+            {'name': 'A', 'instruction': 'Salz und Mehl mischen.',
+             'ingredients': [{'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+                             {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'}]},
+            {'name': 'B', 'instruction': 'Den Ofen vorheizen.', 'ingredients': []},
+        ],
+        'tags': [],
+    }
+    with patch('recipes.plugins.ai_import.views.litellm.completion',
+               return_value=_answer(answer)):
+        response = client_for.post(URL, {'text': 'x', 'ai_provider_id': provider.pk}, format='json')
+
+    steps = response.data['recipe']['steps']
+    assert steps[0]['placeholder_state'] == 'all'
+    assert steps[1]['placeholder_state'] == 'none'
+
+
+def test_preview_reports_the_state_too(client_for, space_1):
+    """The settings page and the dialog must not disagree about a step."""
+    provider = _provider(space_1)
+    answer = {
+        'name': 'Test',
+        'steps': [{'name': 'A', 'instruction': 'Mehl abwiegen.',
+                   'ingredients': [{'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'}]}],
+        'tags': [],
+    }
+    with patch('recipes.plugins.ai_import.preview_views.litellm.completion',
+               return_value=_answer(answer)):
+        response = client_for.post('/api/plugins/ai-import/preview/',
+                                   {'text': 'x', 'ai_provider_id': provider.pk}, format='json')
+
+    assert response.data['recipe']['steps'][0]['placeholder_state'] == 'all'
