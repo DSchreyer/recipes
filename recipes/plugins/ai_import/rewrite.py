@@ -96,23 +96,18 @@ _UNIT_WORDS = (
     'stangen', 'blätter', 'blatt', 'handvoll', 'dash', 'spritzer', 'schuss',
 )
 
+PLACEHOLDER_ALL = 'all'
+PLACEHOLDER_PARTIAL = 'partial'
+PLACEHOLDER_NONE = 'none'
+# The sentence names no ingredient at all, so it needs no amount and nothing
+# was refused. Distinct from 'none' so the dialog stays silent here instead of
+# telling the household the order was wrong.
+PLACEHOLDER_EMPTY = 'empty'
 
-def insert_placeholders(instruction: str, ingredients: list[dict]) -> str:
-    """Replace the first mention of each ingredient's food with a placeholder.
 
-    ``ingredients`` are the step's ingredient dicts as built by ``shaping``,
-    in the order Tandoor will store them, because the reference is positional.
-    Group headers are skipped: they render as a section title, not a food.
-
-    Longest name first, so ``Vollkornweizenmehl`` matches before ``Weizenmehl``.
-    One replacement per ingredient per step: a sentence that names butter four
-    times should not read as four placeholders.
-    """
-    text = instruction or ''
-    if not text:
-        return text
-
-    entries = []
+def _named_ingredients(ingredients: list[dict]) -> list[tuple[int, str]]:
+    """``(index, food name)`` for every row a person would read as a food."""
+    entries: list[tuple[int, str]] = []
     for index, ingredient in enumerate(ingredients):
         if ingredient.get('is_header'):
             continue
@@ -120,24 +115,25 @@ def insert_placeholders(instruction: str, ingredients: list[dict]) -> str:
         if len(name) < 3:
             continue
         entries.append((index, name))
-    entries.sort(key=lambda pair: len(pair[1]), reverse=True)
+    return entries
 
-    consumed: list[tuple[int, int]] = []  # spans already replaced
-    for index, name in entries:
-        # An amount already written beside the name goes with it: a scalable
-        # 450 next to the literal text "450 g" becomes 900 after scaling.
-        pattern = re.compile(
-            r'(?<![\w{])(?:\d+(?:[.,]\d+)?\s*)?'
-            r'(?:(?:' + '|'.join(_UNIT_WORDS) + r')\.?\s+)?'
-            + re.escape(name) + r'(?![\w}])',
-            re.IGNORECASE)
-        for match in pattern.finditer(text):
-            if any(start <= match.start() < end for start, end in consumed):
-                continue
-            text = text[:match.start()] + _placeholder(index) + text[match.end():]
-            consumed.append((match.start(), match.start() + len(_placeholder(index))))
-            break
-    return text
+
+def _food_pattern(name: str) -> str:
+    return (
+        r'(?<![\w{])(?:\d+(?:[.,]\d+)?\s*)?'
+        r'(?:(?:' + '|'.join(_UNIT_WORDS) + r')\.?\s+)?'
+        + re.escape(name) + r'(?![\w}])'
+    )
+
+
+def _mentions(instruction: str, ingredients: list[dict]) -> list[tuple[int, int]]:
+    """``(start, index)`` for each ingredient the instruction names, in text order."""
+    found: list[tuple[int, int]] = []
+    for index, name in _named_ingredients(ingredients):
+        match = re.search(_food_pattern(name), instruction or '', re.IGNORECASE)
+        if match is not None:
+            found.append((match.start(), index))
+    return sorted(found)
 
 
 def placeholders_are_safe(instruction: str, ingredients: list[dict]) -> tuple[bool, str]:
@@ -150,77 +146,82 @@ def placeholders_are_safe(instruction: str, ingredients: list[dict]) -> tuple[bo
     visible at the stove.
 
     A placeholder is safe only when every replaced ingredient appears in the
-    text in the same order as in the ingredient list, and nothing named in the
-    list is missing from the text. Anything else keeps the plain text: a
-    sentence with the amount written out is still correct, a sentence with the
-    wrong amount is not.
+    text in the same order as in the ingredient list. Anything else keeps the
+    plain text: a sentence with the amount written out is still correct, a
+    sentence with the wrong amount is not.
     """
-    positions: list[tuple[int, int]] = []
-    for index, ingredient in enumerate(ingredients):
-        if ingredient.get('is_header'):
-            continue
-        name = ((ingredient.get('food') or {}).get('name') or '').strip()
-        if len(name) < 3:
-            continue
-        match = re.search(r'(?<![\w{])' + re.escape(name) + r'(?![\w}])', instruction or '', re.IGNORECASE)
-        if match is None:
-            # The step does not name this ingredient at all, which is normal for
-            # a later step that only uses part of the list. It cannot be placed
-            # wrong, so it does not block the others.
-            continue
-        positions.append((match.start(), index))
-
-    ordered = sorted(positions)
-    indexes = [index for _pos, index in ordered]
+    indexes = [index for _start, index in _mentions(instruction, ingredients)]
     if indexes != sorted(indexes):
         return False, 'Zutaten stehen im Text in anderer Reihenfolge als in der Liste'
     return True, ''
 
 
-def named_ingredients(instruction: str, ingredients: list[dict]) -> int:
-    """How many distinct ingredients this sentence names.
+def insert_placeholders(instruction: str, ingredients: list[dict]) -> str:
+    """Replace the first mention of each ingredient's food with a placeholder.
 
-    Read from the sentence *before* substitution: afterwards the food names are
-    gone and only ``{{ ingredients[n] }}`` is left, so counting from the
-    finished text always says zero.
+    ``ingredients`` are the step's ingredient dicts as built by ``shaping``,
+    in the order Tandoor will store them, because the reference is positional.
+
+    Longest name first, so ``Vollkornweizenmehl`` matches before ``Weizenmehl``.
+    One replacement per ingredient per step: a sentence that names butter four
+    times should not read as four placeholders.
     """
     text = instruction or ''
-    named = 0
-    for ingredient in ingredients or []:
-        if ingredient.get('is_header'):
-            continue
-        name = ((ingredient.get('food') or {}).get('name') or '').strip()
-        if len(name) < 3:
-            continue
-        if re.search(r'(?<![\w{])' + re.escape(name) + r'(?![\w}])', text, re.IGNORECASE):
-            named += 1
-    return named
+    if not text:
+        return text
+
+    entries = _named_ingredients(ingredients)
+    entries.sort(key=lambda pair: len(pair[1]), reverse=True)
+
+    consumed: list[tuple[int, int]] = []  # spans already replaced
+    for index, name in entries:
+        # An amount already written beside the name goes with it: a scalable
+        # 450 next to the literal text "450 g" becomes 900 after scaling.
+        for match in re.finditer(_food_pattern(name), text, re.IGNORECASE):
+            if any(start <= match.start() < end for start, end in consumed):
+                continue
+            text = text[:match.start()] + _placeholder(index) + text[match.end():]
+            consumed.append((match.start(), match.start() + len(_placeholder(index))))
+            break
+    return text
 
 
-def placeholder_state(instruction: str, ingredients: list[dict]) -> str:
-    """What became of this step's amounts: ``all``, ``partial`` or ``none``.
+def placeholder_state(original: str, finished: str, ingredients: list[dict]) -> str:
+    """What happened to this step's amounts, as a word the import dialog shows.
 
-    Called on the finished instruction together with the ingredients, and the
-    count is taken from the placeholders, because the names are gone by then.
+    ``'all'``     every food the sentence names was replaced by a placeholder
+    ``'none'``    no placeholder was written
+    ``'partial'`` some were replaced and some were not
 
-    Measured 2026-11-14 on Zimtschnecken: the plugin refused the placeholders
-    and said so only in ``warnings``, so the text read "Mehl" without a number
-    and nothing on the page explained why. The household found out at the stove.
+    Three inputs, and each is needed: ``original`` names the foods, so it is
+    where they are counted; ``finished`` holds the placeholders, so it is where
+    the replacement is seen; ``ingredients`` is the step's list, because the
+    reference is positional. Measuring only the finished sentence says "none"
+    for a working step, because the names are gone by then -- the first version
+    of this function did exactly that.
 
-    * ``all`` -- every ingredient the step lists carries a placeholder;
-    * ``partial`` -- some do, some do not;
-    * ``none`` -- none do, which is honest for a step that names no
-      ingredient at all.
+    ``'empty'``  the sentence names no ingredient at all, so it needs no amount
+    and nothing was refused -- the dialog stays silent here
+
+    ``'none'`` is what the reader should be told about: the sentence names an
+    ingredient and got no amount for it, because the order would have put the
+    wrong one in the text.
+
+    Measured 2026-11-14: the Zimtschnecken import refused its placeholders and
+    reported it only in ``warnings``. The text still read "Mehl" without a
+    number and nothing on the page said why, so the household found out at the
+    stove.
     """
-    text = instruction or ''
-    replaced = len(re.findall(r'\{\{\s*ingredients\[\d+\]\s*\}\}', text))
-    available = sum(
-        1 for ingredient in (ingredients or [])
-        if not ingredient.get('is_header')
-        and len(((ingredient.get('food') or {}).get('name') or '').strip()) >= 3
-    )
-    if replaced == 0 or available == 0:
-        return 'none'
-    if replaced >= available:
-        return 'all'
-    return 'partial'
+    found = _mentions(original or '', ingredients)
+    if not found:
+        return PLACEHOLDER_EMPTY
+    if '{{' not in (finished or ''):
+        return PLACEHOLDER_NONE
+    replaced = {int(m.group(1))
+                for m in re.finditer(r'\{\{\s*ingredients\[(\d+)\]\s*\}\}', finished or '')}
+    named = {index for _start, index in found}
+    if named <= replaced:
+        return PLACEHOLDER_ALL
+    if replaced & named:
+        return PLACEHOLDER_PARTIAL
+    return PLACEHOLDER_NONE

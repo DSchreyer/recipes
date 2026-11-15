@@ -134,9 +134,11 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
             step['placeholder_state'] = 'none'
             continue
         safe, reason = placeholders_are_safe(step['instruction'], step['ingredients'])
+        original = step['instruction']
         if safe:
-            step['instruction'] = insert_placeholders(step['instruction'], step['ingredients'])
-            step['placeholder_state'] = placeholder_state(step['instruction'], step['ingredients'])
+            step['instruction'] = insert_placeholders(original, step['ingredients'])
+            step['placeholder_state'] = placeholder_state(
+                original, step['instruction'], step['ingredients'])
         else:
             step['placeholder_state'] = 'none'
             warnings.append(f'Schritt {number}: {reason}')

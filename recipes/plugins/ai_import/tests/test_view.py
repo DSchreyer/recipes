@@ -250,7 +250,9 @@ def test_every_step_reports_what_happened_to_its_amounts(client_for, space_1):
 
     steps = response.data['recipe']['steps']
     assert steps[0]['placeholder_state'] == 'all'
-    assert steps[1]['placeholder_state'] == 'none'
+    # A step with no ingredients has nothing to replace and nothing to warn
+    # about; 'empty' is what keeps the dialog silent there.
+    assert steps[1]['placeholder_state'] == 'empty'
 
 
 def test_preview_reports_the_state_too(client_for, space_1):
@@ -268,3 +270,31 @@ def test_preview_reports_the_state_too(client_for, space_1):
                                    {'text': 'x', 'ai_provider_id': provider.pk}, format='json')
 
     assert response.data['recipe']['steps'][0]['placeholder_state'] == 'all'
+
+
+def test_each_step_carries_its_placeholder_state(client_for, space_1):
+    """The dialog needs the state per step to show it beside the sentence.
+
+    A single 'warnings' string cannot say which of eight steps lost its
+    amounts; the household has to count.
+    """
+    answer = {
+        'name': 'Test',
+        'steps': [
+            {'name': 'A', 'instruction': 'Salz und Mehl mischen.',
+             'ingredients': [{'amount': 1, 'unit': 'TL', 'food': 'Salz'},
+                             {'amount': 450, 'unit': 'Gramm', 'food': 'Mehl'}]},
+            {'name': 'B', 'instruction': 'Den Ofen vorheizen.', 'ingredients': []},
+        ],
+        'tags': [],
+    }
+    provider = _provider(space_1)
+    with patch('recipes.plugins.ai_import.views.litellm.completion', return_value=_answer(answer)):
+        response = client_for.post(URL, {'text': 'x', 'ai_provider_id': provider.pk}, format='json')
+
+    assert response.status_code == 200, getattr(response, 'data', None)
+    steps = response.data['recipe']['steps']
+    assert steps[0]['placeholder_state'] == 'all'
+    # A step with no ingredients has nothing to replace and nothing to warn
+    # about; 'empty' is what keeps the dialog silent there.
+    assert steps[1]['placeholder_state'] == 'empty'

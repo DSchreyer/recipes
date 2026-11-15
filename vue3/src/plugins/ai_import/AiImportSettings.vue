@@ -49,7 +49,7 @@
                 <div v-for="(step, index) in previewResult.steps" :key="index" class="mb-4">
                     <p class="text-subtitle-2">{{ index + 1 }}. {{ step.name }}</p>
                     <p class="text-body-2" style="white-space: pre-wrap">{{ readable(step) }}</p>
-                    <p v-if="step.placeholder_state && step.placeholder_state !== 'all'"
+                    <p v-if="needsAmountNote(step)"
                        class="text-caption text-warning mt-1">
                         <v-icon size="small" icon="fa-solid fa-circle-info" class="mr-1"></v-icon>
                         {{ $t(step.placeholder_state === 'partial'
@@ -122,6 +122,20 @@ function apply(data: any) {
     form.value.enforce_step_titles = data.enforce_step_titles
     form.value.custom_prompt = data.custom_prompt
     stored.value = data.stored
+}
+
+/**
+ * Whether this step needs a note about its amounts.
+ *
+ * 'empty' means the sentence names no ingredient -- "den Ofen vorheizen" --
+ * so there is nothing to say and a note would invent a problem. 'all' needs
+ * nothing either. Only a sentence that names ingredients and got no amount for
+ * them is worth flagging, because that is the case the household meets at the
+ * stove.
+ */
+function needsAmountNote(step: any) {
+    const state = step.placeholder_state
+    return state === 'none' || state === 'partial'
 }
 
 /**

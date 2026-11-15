@@ -379,12 +379,18 @@ class TestPlaceholderState:
         ])
         assert payload['steps'][0]['placeholder_state'] == 'none'
 
-    def test_a_step_that_names_no_ingredient_is_none(self):
-        """Nothing to replace is not "all": the sentence carries no amount."""
+    def test_a_step_that_names_no_ingredient_is_empty(self):
+        """A step with nothing to replace is not a problem, so it says 'empty'.
+
+        Measured 2026-11-15 on the live preview: 'Den Ofen vorheizen' was told
+        "the sentence names its ingredients in another order than the list",
+        which is not true of a sentence that names none. The household would
+        look for a problem that does not exist.
+        """
         payload = self._payload('Den Ofen auf 180 Grad vorheizen.', [
             {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},
         ])
-        assert payload['steps'][0]['placeholder_state'] == 'none'
+        assert payload['steps'][0]['placeholder_state'] == 'empty'
 
     def test_a_partly_replaced_step_is_partial(self):
         payload = self._payload('Mehl und Zucker verrühren, dann die Butter schmelzen.', [
