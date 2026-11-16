@@ -186,42 +186,49 @@ def insert_placeholders(instruction: str, ingredients: list[dict]) -> str:
     return text
 
 
-def placeholder_state(original: str, finished: str, ingredients: list[dict]) -> str:
+def placeholder_state(original: str, finished: str, ingredients: list[dict],
+                      recipe_ingredients: list[dict] | None = None) -> str:
     """What happened to this step's amounts, as a word the import dialog shows.
 
-    ``'all'``     every food the sentence names was replaced by a placeholder
-    ``'none'``    no placeholder was written
+    ``'all'``     every food the sentence names carries a placeholder
+    ``'empty'``   the sentence names no known food, so it needs no amount
+    ``'none'``    it names a food and no placeholder was written
     ``'partial'`` some were replaced and some were not
 
-    Three inputs, and each is needed: ``original`` names the foods, so it is
-    where they are counted; ``finished`` holds the placeholders, so it is where
-    the replacement is seen; ``ingredients`` is the step's list, because the
-    reference is positional. Measuring only the finished sentence says "none"
-    for a working step, because the names are gone by then -- the first version
-    of this function did exactly that.
+    ``original`` names the foods, ``finished`` holds the placeholders, and
+    ``ingredients`` is this step's list, because the reference is positional.
 
-    ``'empty'``  the sentence names no ingredient at all, so it needs no amount
-    and nothing was refused -- the dialog stays silent here
-
-    ``'none'`` is what the reader should be told about: the sentence names an
-    ingredient and got no amount for it, because the order would have put the
-    wrong one in the text.
+    ``recipe_ingredients`` is the whole recipe's list, and it is what makes the
+    answer honest: a sentence "Butter und Rohrzucker schmelzen" in a step that
+    lists only Butter kept the name Rohrzucker and lost its amount, yet
+    reported ``all`` -- the other food belongs to a different step and was
+    invisible to the check. Measured 2026-11-15. A green tick over a sentence
+    that needs checking is worse than no tick, so any food the finished text
+    still names, anywhere in the recipe, means the step is not ``all``.
 
     Measured 2026-11-14: the Zimtschnecken import refused its placeholders and
     reported it only in ``warnings``. The text still read "Mehl" without a
     number and nothing on the page said why, so the household found out at the
     stove.
     """
-    found = _mentions(original or '', ingredients)
-    if not found:
-        return PLACEHOLDER_EMPTY
-    if '{{' not in (finished or ''):
-        return PLACEHOLDER_NONE
     replaced = {int(m.group(1))
                 for m in re.finditer(r'\{\{\s*ingredients\[(\d+)\]\s*\}\}', finished or '')}
-    named = {index for _start, index in found}
-    if named <= replaced:
-        return PLACEHOLDER_ALL
-    if replaced & named:
-        return PLACEHOLDER_PARTIAL
-    return PLACEHOLDER_NONE
+
+    this_step_names = []
+    for index, name in _named_ingredients(ingredients):
+        if re.search(_food_pattern(name), original or '', re.IGNORECASE):
+            this_step_names.append((index, name))
+
+    if not this_step_names:
+        return PLACEHOLDER_EMPTY
+
+    # Any food the finished sentence still spells out kept its name and lost
+    # its amount. Searching the whole recipe catches the food that lives on a
+    # different step of the same dish.
+    for _index, name in _named_ingredients(recipe_ingredients or ingredients):
+        if re.search(_food_pattern(name), finished or '', re.IGNORECASE):
+            return PLACEHOLDER_PARTIAL if replaced else PLACEHOLDER_NONE
+
+    if not replaced:
+        return PLACEHOLDER_NONE
+    return PLACEHOLDER_ALL

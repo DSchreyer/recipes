@@ -405,6 +405,27 @@ class TestPlaceholderState:
         assert payload['steps'][0]['placeholder_state'] == 'all'
         assert text.count('{{') == 3
 
+    def test_a_food_from_another_step_is_not_reported_as_all(self):
+        """The false green tick, in the shape it actually happened.
+
+        Measured 2026-11-15 on Zimtschnecken: the filling step lists Butter,
+        Rohrzucker and Zimt, but the dough step's sentence said "Butter und
+        Rohrzucker schmelzen" while only Butter was on that step. The step
+        reported ``all`` with the word Rohrzucker still standing and no amount
+        beside it. A tick over a sentence that needs checking is worse than no
+        tick.
+        """
+        payload = shaping.to_recipe_payload(
+            {'name': 'Test', 'steps': [
+                {'instruction': 'Butter und Rohrzucker schmelzen.',
+                 'ingredients': [{'amount': 75, 'unit': 'Gramm', 'food': 'Butter'}]},
+                {'instruction': 'Alles verrühren.',
+                 'ingredients': [{'amount': 75, 'unit': 'Gramm', 'food': 'Rohrzucker'}]},
+            ]},
+            units={}, foods={}, keywords=[])
+        assert payload['steps'][0]['placeholder_state'] != 'all'
+        assert 'Rohrzucker' in payload['steps'][0]['instruction']
+
     def test_switched_off_placeholders_are_none(self):
         payload = self._payload('Mehl abwiegen.', [
             {'amount': 1, 'unit': 'kg', 'food': 'Mehl'},

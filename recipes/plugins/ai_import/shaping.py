@@ -121,6 +121,9 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
         raise ShapeError('Rezept ohne Schritte')
 
     warnings = warnings if warnings is not None else []
+    # Every food the recipe lists, on any step. A sentence can name a food that
+    # lives on a different step, and the amount check needs to see it.
+    all_ingredients = [i for step in steps for i in step['ingredients']]
     enforce_titles = options.get('enforce_step_titles', True)
     placeholders = options.get('placeholders_enabled', True)
     for number, step in enumerate(steps, 1):
@@ -138,7 +141,8 @@ def to_recipe_payload(answer: dict, *, units: dict, foods: dict, keywords: list,
         if safe:
             step['instruction'] = insert_placeholders(original, step['ingredients'])
             step['placeholder_state'] = placeholder_state(
-                original, step['instruction'], step['ingredients'])
+                original, step['instruction'], step['ingredients'],
+                recipe_ingredients=all_ingredients)
         else:
             step['placeholder_state'] = 'none'
             warnings.append(f'Schritt {number}: {reason}')
