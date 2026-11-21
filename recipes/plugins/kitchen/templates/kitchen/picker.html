@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block title %}Was koche ich?{% endblock %}
+
+{% block content %}
+    <div class="container-fluid">
+        <h1 class="h3 mb-3">Was koche ich?</h1>
+
+        {% if note %}
+            <div class="alert alert-info py-2">{{ note }}</div>
+        {% endif %}
+
+        {% for row in rows %}
+            {% if row.chips %}
+                <div class="mb-2">
+                    <div class="text-muted small mb-1">{{ row.label }}</div>
+                    {% for chip in row.chips %}
+                        <a href="{{ chip.href }}"
+                           class="btn btn-sm mb-1 {% if chip.active %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ chip.label }}</a>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <form method="get" action="" class="mb-2">
+            {% for key, value in params.items %}
+                {% if key != "q" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+            {% endfor %}
+            <div class="input-group input-group-sm" style="max-width: 22rem;">
+                <input type="text" name="q" value="{{ q }}" class="form-control"
+                       placeholder="Zutat suchen …">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-secondary" type="submit">suchen</button>
+                </div>
+            </div>
+        </form>
+
+        {% if picked or food_results %}
+            <div class="mb-3">
+                {% for item in picked %}
+                    <a href="{{ item.href }}" class="badge badge-primary mb-1">{{ item.name }} ×</a>
+                {% endfor %}
+                {% for item in food_results %}
+                    <a href="{{ item.href }}" class="badge badge-light border mb-1">+ {{ item.name }}</a>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <a class="btn btn-sm btn-success" href="{{ reroll }}">Nochmal</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ more }}">{{ more_label }}</a>
+            <a class="btn btn-sm {% if allow2_active %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+               href="{{ allow2 }}">bis 2 fehlen</a>
+            <a class="btn btn-sm btn-link" href="{{ reset }}">zurücksetzen</a>
+        </div>
+
+        <div class="row">
+            {% for card in cards %}
+                <div class="col-12 col-md-6 col-xl-4 mb-3">
+                    <a class="card h-100 text-decoration-none" href="/recipe/{{ card.recipe_id }}">
+                        {% if card.image_url %}
+                            <img src="{{ card.image_url }}" class="card-img-top" alt=""
+                                 style="object-fit: cover; height: 150px;">
+                        {% else %}
+                            <div class="card-img-top card-placeholder d-flex align-items-center justify-content-center bg-light"
+                                 style="height: 150px;">
+                                <span class="text-muted h4 mb-0">{{ card.name|slice:":1" }}</span>
+                            </div>
+                        {% endif %}
+                        <div class="card-body p-2">
+                            <div class="font-weight-bold">{{ card.name }}</div>
+                            <div class="small text-muted">
+                                {% if card.working_time %}{{ card.working_time }} Min.{% else %}—{% endif %}
+                            </div>
+                            {% if card.have %}
+                                <div class="small text-success">nutzt: {{ card.have|join:", " }}</div>
+                            {% endif %}
+                            {% if card.missing %}
+                                <div class="small text-danger">fehlt: {{ card.missing|join:", " }}</div>
+                            {% endif %}
+                        </div>
+                    </a>
+                </div>
+            {% empty %}
+                <div class="col-12"><p class="text-muted">Nichts gefunden. Setz einen Filter
+                    zurück oder such eine Zutat.</p></div>
+            {% endfor %}
+        </div>
+
+        <p class="text-muted small mt-3">
+            Salz, Pfeffer, Wasser, Öl, Zucker, Mehl, Butter, Essig und Sojasauce gelten als
+            vorhanden.
+        </p>
+    </div>
+{% endblock %}
