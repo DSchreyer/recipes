@@ -161,9 +161,14 @@ NEUTRAL_RATING = 3.0
 
 
 def household_ratings() -> dict[int, tuple[float, int]]:
-    """Recipe id -> (average over every member, number of ratings), space-scoped."""
+    """Recipe id -> (average over every member, number of ratings), space-scoped.
+
+    Zero is not a verdict. Vuetify's clearable star control stores 0 when a
+    selected star is clicked again, and upstream's own editors can produce such
+    rows; counting them would turn "cleared" into "terrible".
+    """
     rows = (
-        CookLog.objects.filter(rating__isnull=False)
+        CookLog.objects.filter(rating__gt=0)
         .values("recipe")
         .annotate(average=Avg("rating"), count=Count("pk"))
     )

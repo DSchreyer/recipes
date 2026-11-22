@@ -98,6 +98,10 @@ onMounted(() => {
     resetForm()
 })
 
+// The quick dialog writes through the same endpoint; after a save the list
+// behind it must show the new cook, not last week's.
+defineExpose({reload: () => recLoadCookLog(props.recipe.id)})
+
 /**
  * recursively load cook logs from database for given recipe
  */

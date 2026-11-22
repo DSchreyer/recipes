@@ -236,3 +236,17 @@ def test_history_filters_by_person(kitchen):
 
     assert 'von Franziska' in body
     assert 'von Daniel' not in body
+
+
+def test_the_query_string_survives_the_redirect(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    response = client.post(URL, {
+        'recipe': dish.id, 'rating': '4',
+        'next': '/api/plugins/kitchen/?carb=Beilage::Kartoffel&seed=abc',
+    })
+
+    assert 'carb=Beilage' in response['Location']
+    assert 'seed=abc' in response['Location']
+    assert response['Location'].endswith('geloggt=1')
