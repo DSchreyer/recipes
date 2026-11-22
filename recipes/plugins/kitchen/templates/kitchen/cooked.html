@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block title %}Gekocht{% endblock %}
+
+{% block content %}
+    <div class="container-fluid">
+        <h1 class="h3 mb-3">Gekocht</h1>
+
+        {% if people %}
+            <div class="mb-3">
+                <a href="?" class="btn btn-sm mb-1 {% if not by %}btn-primary{% else %}btn-outline-secondary{% endif %}">Alle</a>
+                {% for person in people %}
+                    <a href="?by={{ person|urlencode }}"
+                       class="btn btn-sm mb-1 {% if by == person %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ person }}</a>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% for month in months %}
+            <h2 class="h5 mt-4 mb-2">{{ month.label }}</h2>
+            <div class="list-group mb-2">
+                {% for log in month.logs %}
+                    <a class="list-group-item list-group-item-action py-2 text-decoration-none text-reset"
+                       href="/recipe/{{ log.recipe_id }}">
+                        <div class="d-flex justify-content-between">
+                            <span class="font-weight-bold">{{ log.recipe.name }}</span>
+                            <span class="text-muted small">{{ log.created_at|date:"j.n.Y" }}</span>
+                        </div>
+                        <div class="small text-muted">
+                            {{ log.created_by.get_user_display_name }}
+                            {% if log.rating %}
+                                <span class="text-warning ms-2" title="{{ log.rating }} von 5">{{ log.stars }}</span>
+                            {% endif %}
+                        </div>
+                        {% if log.comment %}
+                            <div class="small">„{{ log.comment }}“</div>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </div>
+        {% empty %}
+            <p class="text-muted">Noch nichts gekocht. Auf „Was koche ich?“ oder auf einer
+                Rezeptseite steht der Knopf.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

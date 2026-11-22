@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from cookbook.models import Food, Keyword, Recipe
 from cookbook.tests.factories import (
-    FoodFactory, IngredientFactory, KeywordFactory, RecipeFactory, SpaceFactory,
-    StepFactory,
+    CookLogFactory, FoodFactory, IngredientFactory, KeywordFactory,
+    RecipeFactory, SpaceFactory, StepFactory, UserFactory,
 )
 from django_scopes import scope, scopes_disabled
 
@@ -189,3 +189,83 @@ def test_search_foods_is_space_scoped(space):
 
     with scope(space=space):
         assert match.search_foods('kokos') == ['Kokosmilch']
+
+
+# --- ratings -----------------------------------------------------------------
+
+def _rated(recipe_id, have, missing_names, rating=None):
+    return match.Candidate(
+        recipe_id, f'Rezept {recipe_id}', 20, '', tuple(have), tuple(missing_names),
+        rating=rating,
+    )
+
+
+def test_rating_breaks_a_tie():
+    good = _rated(1, ['Reis'], [], 4.8)
+    okay = _rated(2, ['Reis'], [], 4.2)
+
+    ranked = match.rank([okay, good], seed='s', limit=6)
+
+    assert [c.recipe_id for c in ranked] == [1, 2]
+
+
+def test_unrated_is_neutral_not_zero():
+    great = _rated(1, ['Reis'], [], 5.0)
+    unrated = _rated(2, ['Reis'], [])
+    bad = _rated(3, ['Reis'], [], 1.0)
+
+    ranked = match.rank([bad, unrated, great], seed='s', limit=6)
+
+    assert [c.recipe_id for c in ranked] == [1, 2, 3]
+
+
+def test_fit_beats_fame():
+    famous = _rated(1, ['Reis'], ['Kokosmilch'], 5.0)
+    plain = _rated(2, ['Reis'], [])
+
+    ranked = match.rank([famous, plain], seed='s', limit=6)
+
+    assert [c.recipe_id for c in ranked] == [2, 1]
+
+
+def test_min_rating_drops_the_merely_okay():
+    good = _rated(1, ['Reis'], [], 4.0)
+    meh = _rated(2, ['Reis'], [], 3.0)
+
+    ranked = match.rank([meh, good], seed='s', limit=6, min_rating=4)
+
+    assert [c.recipe_id for c in ranked] == [1]
+
+
+def test_household_rating_counts_both_people(space):
+    with scopes_disabled():
+        dish = recipe(space, 'Suppe')
+        one = UserFactory.create()
+        two = UserFactory.create()
+        CookLogFactory.create(recipe=dish, created_by=one, rating=5, space=space)
+        CookLogFactory.create(recipe=dish, created_by=two, rating=3, space=space)
+
+    with scope(space=space):
+        assert match.household_ratings()[dish.id] == (4.0, 2)
+
+
+def test_last_note_is_the_newest_one(space):
+    from datetime import timedelta
+    from django.utils import timezone
+
+    now = timezone.now()
+    with scopes_disabled():
+        dish = recipe(space, 'Suppe')
+        one = UserFactory.create(first_name='Daniel', last_name='')
+        two = UserFactory.create(first_name='Franziska', last_name='')
+        CookLogFactory.create(recipe=dish, created_by=one, rating=4, space=space,
+                              comment='weniger Salz', created_at=now - timedelta(days=3))
+        CookLogFactory.create(recipe=dish, created_by=two, rating=5, space=space,
+                              comment='mehr Zitrone', created_at=now)
+
+    with scope(space=space):
+        when, who, note = match.last_notes()[dish.id]
+
+    assert who == 'Franziska'
+    assert note == 'mehr Zitrone'
+    assert when == now.date()

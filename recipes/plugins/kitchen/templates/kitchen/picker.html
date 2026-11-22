@@ -10,6 +10,9 @@
         {% if note %}
             <div class="alert alert-info py-2">{{ note }}</div>
         {% endif %}
+        {% if saved %}
+            <div class="alert alert-success py-2">Gekocht gespeichert.</div>
+        {% endif %}
 
         {% for row in rows %}
             {% if row.chips %}
@@ -52,35 +55,73 @@
             <a class="btn btn-sm btn-outline-secondary" href="{{ more }}">{{ more_label }}</a>
             <a class="btn btn-sm {% if allow2_active %}btn-primary{% else %}btn-outline-secondary{% endif %}"
                href="{{ allow2 }}">bis 2 fehlen</a>
+            <a class="btn btn-sm {% if proven_active %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+               href="{{ proven }}">nur Bewährtes</a>
             <a class="btn btn-sm btn-link" href="{{ reset }}">zurücksetzen</a>
         </div>
 
         <div class="row">
             {% for card in cards %}
                 <div class="col-12 col-md-6 col-xl-4 mb-3">
-                    <a class="card h-100 text-decoration-none" href="/recipe/{{ card.recipe_id }}">
-                        {% if card.image_url %}
-                            <img src="{{ card.image_url }}" class="card-img-top" alt=""
-                                 style="object-fit: cover; height: 150px;">
-                        {% else %}
-                            <div class="card-img-top card-placeholder d-flex align-items-center justify-content-center bg-light"
-                                 style="height: 150px;">
-                                <span class="text-muted h4 mb-0">{{ card.name|slice:":1" }}</span>
-                            </div>
-                        {% endif %}
+                    <div class="card h-100">
+                        <a href="/recipe/{{ card.recipe_id }}" class="text-decoration-none">
+                            {% if card.image_url %}
+                                <img src="{{ card.image_url }}" class="card-img-top" alt=""
+                                     style="object-fit: cover; height: 150px;">
+                            {% else %}
+                                <div class="card-img-top card-placeholder d-flex align-items-center justify-content-center bg-light"
+                                     style="height: 150px;">
+                                    <span class="text-muted h4 mb-0">{{ card.name|slice:":1" }}</span>
+                                </div>
+                            {% endif %}
+                        </a>
                         <div class="card-body p-2">
-                            <div class="font-weight-bold">{{ card.name }}</div>
+                            <a href="/recipe/{{ card.recipe_id }}" class="font-weight-bold text-decoration-none text-reset">
+                                {{ card.name }}
+                            </a>
                             <div class="small text-muted">
                                 {% if card.working_time %}{{ card.working_time }} Min.{% else %}—{% endif %}
+                                {% if card.rating %}
+                                    <span class="ms-2 text-warning" title="Haushalt">
+                                        {{ card.stars }} {{ card.rating_label }}
+                                    </span>
+                                {% endif %}
                             </div>
+                            {% if card.last_note %}
+                                <div class="small text-info">
+                                    Zuletzt: „{{ card.last_note|truncatechars:70 }}“
+                                </div>
+                            {% endif %}
                             {% if card.have %}
                                 <div class="small text-success">nutzt: {{ card.have|join:", " }}</div>
                             {% endif %}
                             {% if card.missing %}
                                 <div class="small text-danger">fehlt: {{ card.missing|join:", " }}</div>
                             {% endif %}
+
+                            {# One tap on a star is the whole rating. #}
+                            <form method="post" action="" class="mt-2">
+                                {% csrf_token %}
+                                <input type="hidden" name="recipe" value="{{ card.recipe_id }}">
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <div class="d-flex align-items-center mb-1">
+                                    <input type="date" name="date" value="{{ today }}"
+                                           class="form-control form-control-sm me-1" style="max-width: 9rem;"
+                                           aria-label="Datum">
+                                    <input type="text" name="note" class="form-control form-control-sm"
+                                           placeholder="Notiz" aria-label="Notiz">
+                                </div>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Bewerten">
+                                    <button type="submit" name="rating" value="1" class="btn btn-outline-warning" title="1 von 5">★</button>
+                                    <button type="submit" name="rating" value="2" class="btn btn-outline-warning" title="2 von 5">★</button>
+                                    <button type="submit" name="rating" value="3" class="btn btn-outline-warning" title="3 von 5">★</button>
+                                    <button type="submit" name="rating" value="4" class="btn btn-outline-warning" title="4 von 5">★</button>
+                                    <button type="submit" name="rating" value="5" class="btn btn-outline-warning" title="5 von 5">★</button>
+                                    <button type="submit" name="rating" value="" class="btn btn-outline-secondary">Gekocht</button>
+                                </div>
+                            </form>
                         </div>
-                    </a>
+                    </div>
                 </div>
             {% empty %}
                 <div class="col-12"><p class="text-muted">Nichts gefunden. Setz einen Filter

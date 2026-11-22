@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import date
 from typing import Iterable
 
-from cookbook.models import Food, Keyword, Recipe
+from django.db.models import Avg, Count
+
+from cookbook.models import CookLog, Food, Keyword, Recipe
 
 # The five questions a cook asks, in the order they get asked at the stove.
 # Every axis is a keyword prefix, so the chip lists are read from the tree the
@@ -129,6 +132,66 @@ class Candidate:
     image_url: str
     have: tuple[str, ...]
     missing: tuple[str, ...]
+    rating: float | None = None
+    rating_count: int = 0
+    last_note: str = ""
+    last_date: date | None = None
+
+    @property
+    def stars(self) -> str:
+        """Glyphs for the card, rounded to the nearest whole star."""
+        if self.rating is None:
+            return ""
+        full = max(0, min(5, int(round(self.rating))))
+        return "★" * full + "☆" * (5 - full)
+
+    @property
+    def rating_label(self) -> str:
+        """The household number, German decimal comma, with its sample size."""
+        if self.rating is None:
+            return ""
+        label = f"{self.rating:.1f}".replace(".", ",")
+        return f"{label} · {self.rating_count}×" if self.rating_count else label
+
+
+# What an unrated recipe is worth in a tie. Not zero: a dish nobody has rated
+# yet is unknown, not bad, and the household's first week would otherwise bury
+# the whole library under three rated favourites.
+NEUTRAL_RATING = 3.0
+
+
+def household_ratings() -> dict[int, tuple[float, int]]:
+    """Recipe id -> (average over every member, number of ratings), space-scoped."""
+    rows = (
+        CookLog.objects.filter(rating__isnull=False)
+        .values("recipe")
+        .annotate(average=Avg("rating"), count=Count("pk"))
+    )
+    return {row["recipe"]: (float(row["average"]), row["count"]) for row in rows}
+
+
+def last_notes() -> dict[int, tuple[date, str, str]]:
+    """Recipe id -> (date, who, note) for the newest note in the space.
+
+    One query, newest first, first comment per recipe wins. The note is the
+    cook's message to their future self, so only a non-empty comment counts.
+    """
+    rows = (
+        CookLog.objects.exclude(comment__isnull=True)
+        .exclude(comment="")
+        .select_related("created_by")
+        .order_by("-created_at")
+    )
+    found: dict[int, tuple[date, str, str]] = {}
+    for log in rows:
+        if log.recipe_id in found:
+            continue
+        found[log.recipe_id] = (
+            log.created_at.date(),
+            log.created_by.get_user_display_name().strip(),
+            log.comment,
+        )
+    return found
 
 
 def _shuffle_key(seed: str, recipe_id: int) -> str:
@@ -141,15 +204,27 @@ def rank(
     allow_missing: int = 1,
     seed: str = "",
     limit: int = DEFAULT_CARDS,
+    min_rating: int | None = None,
 ) -> list[Candidate]:
-    """Fewest missing first, then most of your food used, then a seeded shuffle.
+    """Fewest missing first, then most of your food used, then rating, then shuffle.
 
     The shuffle is what makes the re-roll button useful: pressing it changes the
     order inside a tier without letting a dish that needs two extra ingredients
     outrank one that needs none.
+
+    Rating sits *below* fit on purpose. At 18:00 a proven dish that needs a
+    shopping trip is still a worse answer than an unknown one that is already
+    in the kitchen.
     """
     keep = [c for c in candidates if len(c.missing) <= allow_missing]
-    keep.sort(key=lambda c: (len(c.missing), -len(c.have), _shuffle_key(seed, c.recipe_id)))
+    if min_rating is not None:
+        keep = [c for c in keep if c.rating is not None and c.rating >= min_rating]
+    keep.sort(key=lambda c: (
+        len(c.missing),
+        -len(c.have),
+        -(c.rating if c.rating is not None else NEUTRAL_RATING),
+        _shuffle_key(seed, c.recipe_id),
+    ))
     return keep[:limit]
 
 
@@ -166,7 +241,7 @@ def search_foods(term: str, limit: int = 20) -> list[str]:
 
 __all__ = [
     "AXIS_LABEL", "AXIS_PREFIX", "Candidate", "DEFAULT_CARDS", "EXCLUDED_KEYWORD",
-    "MAX_CARDS", "STAPLES", "STAPLE_SUFFIXES", "axis_values", "food_names",
-    "is_staple", "missing", "rank", "recipes_for", "search_foods", "short_label",
-    "toggle",
+    "MAX_CARDS", "NEUTRAL_RATING", "STAPLES", "STAPLE_SUFFIXES", "axis_values",
+    "food_names", "household_ratings", "is_staple", "last_notes", "missing",
+    "rank", "recipes_for", "search_foods", "short_label", "toggle",
 ]

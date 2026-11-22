@@ -33,6 +33,12 @@ export const plugin: TandoorPlugin = {
             title: 'Recipe_Finder',
             href: useDjangoUrls().getDjangoUrl('api/plugins/kitchen/'),
         },
+        {
+            component: VListItem,
+            prependIcon: 'fa-solid fa-clock-rotate-left',
+            title: 'Gekocht',
+            href: useDjangoUrls().getDjangoUrl('api/plugins/kitchen/gekocht/'),
+        },
     ],
     bottomNavigation: [],
     userNavigation: [],
