@@ -8,12 +8,13 @@ household read another's recipes.
 from __future__ import annotations
 
 import pytest
-from cookbook.models import UserSpace
+from cookbook.models import CookLog, UserSpace
 from cookbook.tests.factories import (
-    FoodFactory, IngredientFactory, KeywordFactory, RecipeFactory, SpaceFactory,
-    StepFactory, UserFactory,
+    CookLogFactory, FoodFactory, IngredientFactory, KeywordFactory, RecipeFactory,
+    SpaceFactory, StepFactory, UserFactory,
 )
 from django.test import Client
+from django.utils import timezone
 from django.urls import reverse
 from django_scopes import scopes_disabled
 
@@ -138,3 +139,100 @@ def test_unknown_keyword_value_renders_instead_of_crashing(kitchen):
 
     assert response.status_code == 200
     assert 'Ohne' in response.content.decode()
+
+
+# --- logging a cook ----------------------------------------------------------
+
+def test_a_star_creates_a_dated_cook_log(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    response = client.post(URL, {
+        'recipe': dish.id,
+        'rating': '4',
+        'note': 'mehr Muskat',
+        'date': '2026-11-20',
+        'next': '/api/plugins/kitchen/?carb=Beilage::Kartoffel',
+    })
+
+    assert response.status_code == 302
+    assert response['Location'].endswith('geloggt=1')
+    with scopes_disabled():
+        log = CookLog.objects.get()
+    assert log.recipe_id == dish.id
+    assert log.rating == 4
+    assert log.comment == 'mehr Muskat'
+    assert log.created_at.date().isoformat() == '2026-11-20'
+
+
+def test_cooked_without_stars_still_records_the_day(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    client.post(URL, {'recipe': dish.id, 'rating': '', 'date': '2026-11-20'})
+
+    with scopes_disabled():
+        log = CookLog.objects.get()
+    assert log.rating is None
+    assert log.comment is None
+
+
+def test_a_recipe_from_another_space_writes_nothing(kitchen):
+    client, space = kitchen
+    with scopes_disabled():
+        other = SpaceFactory.create(name='Other')
+        foreign = RecipeFactory.create(space=other, name='Fremd', steps__count=0)
+
+    response = client.post(URL, {'recipe': foreign.id, 'rating': '5'})
+
+    assert response.status_code == 302
+    with scopes_disabled():
+        assert CookLog.objects.count() == 0
+
+
+def test_next_cannot_leave_the_site(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    response = client.post(URL, {'recipe': dish.id, 'rating': '5', 'next': 'https://evil.example/x'})
+
+    assert response['Location'].startswith('/api/plugins/kitchen/')
+
+
+# --- the history page ---------------------------------------------------------
+
+HISTORY = '/api/plugins/kitchen/gekocht/'
+
+
+def test_history_groups_by_month(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    with scopes_disabled():
+        user = UserFactory.create(first_name='Daniel', last_name='')
+        UserSpace.objects.create(user=user, space=space, active=True)
+        CookLogFactory.create(recipe=dish, created_by=user, rating=5, space=space,
+                              created_at=timezone.now().replace(year=2026, month=10, day=3))
+        CookLogFactory.create(recipe=dish, created_by=user, rating=4, space=space,
+                              created_at=timezone.now().replace(year=2026, month=11, day=3))
+
+    body = client.get(HISTORY).content.decode()
+
+    assert 'Oktober 2026' in body
+    assert 'November 2026' in body
+
+
+def test_history_filters_by_person(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    with scopes_disabled():
+        daniel = UserFactory.create(first_name='Daniel', last_name='')
+        franziska = UserFactory.create(first_name='Franziska', last_name='')
+        CookLogFactory.create(recipe=dish, created_by=daniel, rating=5, space=space,
+                              comment='von Daniel')
+        CookLogFactory.create(recipe=dish, created_by=franziska, rating=4, space=space,
+                              comment='von Franziska')
+
+    body = client.get(HISTORY, {'by': franziska.username}).content.decode()
+
+    assert 'von Franziska' in body
+    assert 'von Daniel' not in body
