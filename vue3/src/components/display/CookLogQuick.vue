@@ -69,6 +69,8 @@ import {VDateInput} from 'vuetify/labs/VDateInput'
  * repo): a rating without a date would not survive the first "when did we last
  * make this" question.
  */
+const emit = defineEmits<{saved: []}>()
+
 const props = defineProps<{
     recipe: Recipe
     servings?: number
@@ -115,14 +117,17 @@ function save() {
     api.apiCookLogCreate({
         cookLog: {
             recipe: props.recipe.id!,
-            rating: form.value.rating ?? null,
-            comment: form.value.comment || null,
+            // Vuetify's clearable rating yields 0, which would become a real
+            // verdict and drag the household average down.
+            rating: form.value.rating || null,
+            comment: form.value.comment?.trim() || null,
             servings: form.value.servings ?? null,
             createdAt: form.value.createdAt ?? new Date(),
         },
     }).then(r => {
         latest.value = r
         dialog.value = false
+        emit('saved')
     }).catch(err => {
         useMessageStore().addError(ErrorMessageType.CREATE_ERROR, err)
     }).finally(() => {

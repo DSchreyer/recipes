@@ -269,3 +269,15 @@ def test_last_note_is_the_newest_one(space):
     assert who == 'Franziska'
     assert note == 'mehr Zitrone'
     assert when == now.date()
+
+
+def test_a_cleared_star_is_not_a_verdict(space):
+    """Vuetify stores 0 when a selected star is clicked again; that is not a rating."""
+    with scopes_disabled():
+        dish = recipe(space, 'Suppe')
+        one = UserFactory.create()
+        CookLogFactory.create(recipe=dish, created_by=one, rating=5, space=space)
+        CookLogFactory.create(recipe=dish, created_by=one, rating=0, space=space)
+
+    with scope(space=space):
+        assert match.household_ratings()[dish.id] == (5.0, 1)

@@ -33,7 +33,7 @@
                     <v-sheet class="ps-2 text-disabled">
                         {{ recipe.description }}
                     </v-sheet>
-                    <cook-log-quick :recipe="recipe" :servings="servings" class="ps-2 pb-2"></cook-log-quick>
+                    <cook-log-quick :recipe="recipe" :servings="servings" class="ps-2 pb-2" @saved="onCooked"></cook-log-quick>
                 </v-card>
             </v-card>
 
@@ -90,7 +90,7 @@
 
                             <v-rating v-model="recipe.rating" size="x-small" v-if="recipe.rating" readonly></v-rating>
 
-                            <cook-log-quick :recipe="recipe" :servings="servings" class="mt-2"></cook-log-quick>
+                            <cook-log-quick :recipe="recipe" :servings="servings" class="mt-2" @saved="onCooked"></cook-log-quick>
 
                             <keywords-component variant="flat" class="mt-4" :keywords="recipe.keywords"></keywords-component>
 
@@ -194,7 +194,7 @@
             </v-card-text>
         </v-card>
 
-        <recipe-activity :recipe="recipe" :servings="servings" v-if="useUserPreferenceStore().userSettings.comments"></recipe-activity>
+        <recipe-activity ref="activity" :recipe="recipe" :servings="servings" v-if="useUserPreferenceStore().userSettings.comments"></recipe-activity>
     </template>
 </template>
 
@@ -226,6 +226,7 @@ const {request, release} = useWakeLock()
 const {doAiImport, fileApiLoading} = useFileApi()
 
 const loading = ref(false)
+const activity = ref<{reload: () => void} | null>(null)
 const recipe = defineModel<Recipe>({required: true})
 const props = defineProps<{
     servings: {type: Number, required: false},
@@ -239,6 +240,17 @@ const selectedAiProvider = ref<undefined | AiProvider>(useUserPreferenceStore().
 /**
  * factor for multiplying ingredient amounts based on recipe base servings and user selected servings
  */
+/** A saved cook changes the star row and the activity list; both are already on screen. */
+function onCooked() {
+    activity.value?.reload()
+    if (!recipe.value.id) return
+    new ApiApi().apiRecipeRetrieve({id: recipe.value.id}).then(r => {
+        recipe.value = r
+    }).catch(() => {
+        // The cook is saved; a stale header is not worth an error dialog.
+    })
+}
+
 const ingredientFactor = computed(() => {
     return servings.value / ((recipe.value.servings != undefined) ? Math.max(recipe.value.servings, 1) : 1)
 })
