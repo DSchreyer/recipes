@@ -33,6 +33,7 @@
                     <v-sheet class="ps-2 text-disabled">
                         {{ recipe.description }}
                     </v-sheet>
+                    <cook-log-quick :recipe="recipe" :servings="servings" class="ps-2 pb-2"></cook-log-quick>
                 </v-card>
             </v-card>
 
@@ -88,6 +89,8 @@
                             <private-recipe-badge :users="recipe.shared" v-if="recipe._private"></private-recipe-badge>
 
                             <v-rating v-model="recipe.rating" size="x-small" v-if="recipe.rating" readonly></v-rating>
+
+                            <cook-log-quick :recipe="recipe" :servings="servings" class="mt-2"></cook-log-quick>
 
                             <keywords-component variant="flat" class="mt-4" :keywords="recipe.keywords"></keywords-component>
 
@@ -202,6 +205,7 @@ import {AiProvider, ApiApi, Recipe} from "@/openapi"
 import NumberScalerDialog from "@/components/inputs/NumberScalerDialog.vue"
 import StepsOverview from "@/components/display/StepsOverview.vue";
 import RecipeActivity from "@/components/display/RecipeActivity.vue";
+import CookLogQuick from "@/components/display/CookLogQuick.vue";
 import RecipeContextMenu from "@/components/inputs/RecipeContextMenu.vue";
 import KeywordsComponent from "@/components/display/KeywordsBar.vue";
 import RecipeImage from "@/components/display/RecipeImage.vue";

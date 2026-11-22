@@ -10,6 +10,17 @@
             <div class="d-flex ">
                 <div class="flex-grow-1 cursor-pointer" @click="openRecipe()">
                     <p class="font-weight-bold mt-2">{{ props.recipe.name }}</p>
+                    <!-- Only when rated: an empty star row reads as "bad". -->
+                    <v-rating
+                        v-if="props.recipe.rating"
+                        :model-value="props.recipe.rating"
+                        readonly
+                        half-increments
+                        size="x-small"
+                        density="compact"
+                        color="tandoor"
+                        class="ml-n2"
+                    ></v-rating>
                 </div>
                 <div class="mt-1">
                     <!--                    <v-btn icon="fas fa-ellipsis-v" size="small" variant="plain"></v-btn>-->
