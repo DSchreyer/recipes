@@ -235,6 +235,12 @@ class RecipeSearch:
 
         orderby = self._build_sort_order()
 
+        # The card grid draws stars from this field, and a plain list request
+        # carries no rating sort or filter to trigger it. At household scale the
+        # extra join is free; without it stars render only on rating-sorted
+        # searches, which is exactly where nobody needs persuading.
+        qs = qs.with_rating(user)
+
         # Sort-only annotations (idempotent — filter methods below won't duplicate)
         if _sort_includes(orderby, 'rating'):
             qs = qs.with_rating(user)
