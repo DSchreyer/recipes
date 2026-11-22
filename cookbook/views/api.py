@@ -2495,7 +2495,9 @@ class CookLogViewSet(LoggingMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         if self.request.query_params.get('recipe', None):
             self.queryset = self.queryset.filter(recipe=self.request.query_params.get('recipe'))
-        return self.queryset.filter(space=self.request.space)
+        # Newest first: the recipe page's "last time" line reads the first page,
+        # and the activity list already sorts client-side.
+        return self.queryset.filter(space=self.request.space).order_by('-created_at')
 
 
 class ImportLogViewSet(LoggingMixin, viewsets.ModelViewSet):
