@@ -271,3 +271,19 @@ def test_a_rating_off_the_quarter_step_is_ignored(kitchen):
 
     with scopes_disabled():
         assert CookLog.objects.get().rating is None
+
+
+def test_history_shows_the_quarter_and_the_display_name(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    with scopes_disabled():
+        person = UserFactory.create(first_name='Daniel', last_name='')
+        UserSpace.objects.create(user=person, space=space, active=True)
+        CookLogFactory.create(recipe=dish, created_by=person, rating='4.25', space=space,
+                              comment='Viertelstern')
+
+    body = client.get(HISTORY).content.decode()
+
+    assert '4,25' in body
+    assert '>Daniel<' in body
+    assert '>daniel<' not in body

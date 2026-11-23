@@ -276,17 +276,26 @@ class CookedView(TemplateView):
 
         months: list[dict] = []
         for log in logs[: self.page_size]:
-            label = _month_label(log.created_at)
+            label = _month_label(timezone.localtime(log.created_at))
             if not months or months[-1]["label"] != label:
                 months.append({"label": label, "logs": []})
-            log.stars = "★" * int(round(log.rating or 0))
+            log.stars = "★" * int(float(log.rating or 0) + 0.5)
+            log.rating_label = (
+                f"{float(log.rating):.2f}".rstrip("0").rstrip(".").replace(".", ",")
+                if log.rating else ""
+            )
             months[-1]["logs"].append(log)
 
-        people = (
-            CookLog.objects.order_by("created_by__username")
-            .values_list("created_by__username", flat=True)
-            .distinct()
-        )
+        people = [
+            {"username": username, "name": f"{first} {last}".strip() or username}
+            for username, first, last in (
+                CookLog.objects.order_by("created_by__username")
+                .values_list(
+                    "created_by__username", "created_by__first_name", "created_by__last_name"
+                )
+                .distinct()
+            )
+        ]
         context.update(months=months, people=people, by=by)
         return context
 
