@@ -167,7 +167,9 @@
                                     </v-file-upload>
 
                                     <v-textarea v-model="sourceImportText" :loading="loading" autofocus v-if="aiMode == 'text'"
-                                                @keydown.enter="loadRecipeFromAiImport()"></v-textarea>
+                                                :label="$t('AIImportTextLabel')" :placeholder="$t('AIImportTextPlaceholder')"
+                                                :hint="$t('AIImportTextHint')" persistent-hint
+                                                @keydown.enter="loadRecipeFromAiImportText()"></v-textarea>
 
                                     <v-text-field v-if="aiMode == 'link'" :label="$t('Website') + ' (https://...)'"
                                                   v-model="importUrl" :loading="loading" autofocus
@@ -199,8 +201,11 @@
                                         <v-btn @click="loadRecipeFromUrl({data: sourceImportText})" v-if="importType == 'source'" :disabled="sourceImportText == ''"
                                                :loading="loading">{{ $t('Load') }}
                                         </v-btn>
-                                        <v-btn @click="loadRecipeFromAiImport()" v-if="importType == 'ai' && aiMode != 'link'"
-                                               :disabled="(aiMode == 'file' && image == null) || (aiMode == 'text' && sourceImportText == '')" :loading="loading">{{ $t('Load') }}
+                                        <v-btn @click="loadRecipeFromAiImport()" v-if="importType == 'ai' && aiMode == 'file'"
+                                               :disabled="image == null" :loading="loading">{{ $t('Load') }}
+                                        </v-btn>
+                                        <v-btn @click="loadRecipeFromAiImportText()" v-if="importType == 'ai' && aiMode == 'text'"
+                                               :disabled="sourceImportText == ''" :loading="loading">{{ $t('Load') }}
                                         </v-btn>
                                         <v-btn @click="loadRecipeFromAiImportUrl()" v-if="importType == 'ai' && aiMode == 'link'"
                                                :disabled="importUrl == ''" :loading="loading">{{ $t('Load') }}
@@ -815,22 +820,24 @@ function loadRecipeFromAiImportUrl() {
         })
 }
 
+/**
+ * upload the chosen photo/PDF to Tandoor's own AI endpoint.
+ *
+ * Files stay on `/api/ai-import/`: it reads the picture, which is the one input
+ * the plugin's endpoint does not take.
+ */
 function loadRecipeFromAiImport() {
-    let request = null
-
     if (selectedAiProvider.value == undefined) {
         useMessageStore().addError(ErrorMessageType.CREATE_ERROR, "No AI Provider selected")
+        return
+    }
+    if (image.value == null || aiMode.value != 'file') {
+        return
     }
 
-    if (image.value != null && aiMode.value == 'file') {
-        request = doAiImport(selectedAiProvider.value.id!, image.value)
-    } else if (sourceImportText.value != '' && aiMode.value == 'text') {
-        request = doAiImport(selectedAiProvider.value.id!, null, sourceImportText.value)
-    }
-
-    if (request != null) {
-        loading.value = true
-        request.then(r => {
+    loading.value = true
+    doAiImport(selectedAiProvider.value.id!, image.value)
+        .then(r => {
             loading.value = false
             importResponse.value = r
 
@@ -842,10 +849,48 @@ function loadRecipeFromAiImport() {
                 }
             }
         }).catch(err => {
+            loading.value = false
             useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
         })
+}
+
+/**
+ * free text ("Mach mir ein Carbonara für vier") into a recipe through the
+ * ai_import plugin.
+ *
+ * Tandoor's `/api/ai-import/` takes the same text, but only asks the model for
+ * a recipe. The plugin asks for one and then matches every food and unit
+ * against this space and drops tags the household does not have, so the draft
+ * arrives in the editor already speaking the library's vocabulary. Same
+ * endpoint, loading state and error handling as the link mode above.
+ */
+function loadRecipeFromAiImportText() {
+    if (selectedAiProvider.value == undefined) {
+        useMessageStore().addError(ErrorMessageType.CREATE_ERROR, "No AI Provider selected")
+        return
+    }
+    if (sourceImportText.value == '') {
+        return
     }
 
+    loading.value = true
+    doAiImportFromSource(selectedAiProvider.value.id!, '', sourceImportText.value)
+        .then(r => {
+            loading.value = false
+            importResponse.value = r
+
+            if (!importResponse.value.error) {
+                if (importResponse.value.images && importResponse.value.images.length > 0) {
+                    stepper.value = 'image_chooser'
+                } else {
+                    stepper.value = 'keywords_chooser'
+                }
+            }
+        })
+        .catch(err => {
+            loading.value = false
+            useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
+        })
 }
 
 function appImport() {
