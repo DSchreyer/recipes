@@ -37,6 +37,22 @@ the shape Tandoor's import dialog already consumes:
 it and saves it in Tandoor. That is deliberate: an import nobody reviewed is
 how a recipe library rots.
 
+## Where the import dialog calls it
+
+The AI tab of `vue3/src/pages/RecipeImportPage.vue` has three modes, and each
+takes the shortest honest route:
+
+| Mode | Request | Why |
+|---|---|---|
+| File | `POST /api/ai-import/` (upstream) | it reads an uploaded photo or PDF, the one input this plugin does not take |
+| Text | `POST /api/plugins/ai-import/from-source/` with `{"text": ...}` | "Mach mir ein Carbonara für vier" is shaped by the prompt and then checked against the space |
+| Website | `POST /api/plugins/ai-import/from-source/` with `{"url": ...}` | the page is fetched and shaped instead of being parsed for schema.org |
+
+All three end in the same review stepper (duplicates, images, keywords, steps),
+and none of them saves anything. The plugin's answer is read by the same
+response handling in all three cases, so a rejected request surfaces through
+the dialog's message store rather than a silent empty form.
+
 ## What it enforces, and why each one exists
 
 - **Every ingredient gets a `unit`**, even an empty one. Tandoor drops a
@@ -79,19 +95,16 @@ registered as `...apps.AppConfig` and startup fails.
 
 Each needs its own slice, its own tests and its own verification:
 
-1. **A button in the web UI.** The endpoint works; the Vue import page does
-   not know about it. Needs `vue3/src/pages/RecipeImportPage.vue` plus a
-   rebuilt frontend bundle in the image.
-2. **Image and PDF input** at the same endpoint (Tandoor's own `/api/ai-import/`
+1. **Image and PDF input** at the same endpoint (Tandoor's own `/api/ai-import/`
    already covers files; this would only merge the two entry points).
-3. **Batch import from a folder** — network share/WebDAV, one recipe per file.
-4. **Enhance an existing recipe**: tags, cuisine, difficulty, restructured
+2. **Batch import from a folder** — network share/WebDAV, one recipe per file.
+3. **Enhance an existing recipe**: tags, cuisine, difficulty, restructured
    steps. Decided design: preview a diff, apply on click, food merges only as
    suggestions with a checkbox. Not started.
-5. **Pantry to dinner**, menu and drink suggestions, trivia. Not started, and
+4. **Pantry to dinner**, menu and drink suggestions, trivia. Not started, and
    the pantry photo would need a data-policy decision first: the recipe alias
    is on OpenRouter's global endpoint (ADR-0063).
-6. **Nutrition.** Deliberately deferred in the planning conversation: an AI
+5. **Nutrition.** Deliberately deferred in the planning conversation: an AI
    estimate on the page is confidently wrong data.
 
 ## Running it
