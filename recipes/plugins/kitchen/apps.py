@@ -21,3 +21,23 @@ class KitchenConfig(AppConfig):
     nav_main = ''
     nav_dropdown = ''
     api_router_name = ''
+
+    def ready(self):
+        """Wire the cook log to the diary.
+
+        Imported here rather than at module level: the loader mentioned above
+        reads ``sorted(dir(module))[1]``, so a new top-level name is a startup
+        risk. The signal covers both write paths -- the picker's form and
+        upstream's ``POST /api/cook-log/`` -- without either of them knowing.
+        """
+        from cookbook.models import CookLog
+        from django.db.models.signals import post_save
+
+        from . import diary
+
+        post_save.connect(
+            diary.cook_logged,
+            sender=CookLog,
+            dispatch_uid='kitchen.diary.cook_log',
+        )
+        diary.startup_notice()
