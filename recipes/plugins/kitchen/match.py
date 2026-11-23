@@ -142,7 +142,7 @@ class Candidate:
         """Glyphs for the card, rounded to the nearest whole star."""
         if self.rating is None:
             return ""
-        full = max(0, min(5, int(round(self.rating))))
+        full = max(0, min(5, int(self.rating + 0.5)))
         return "★" * full + "☆" * (5 - full)
 
     @property
