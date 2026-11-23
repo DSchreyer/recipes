@@ -1,45 +1,54 @@
-{% extends "base.html" %}
+{% extends "kitchen/_base.html" %}
 {% load i18n static tz %}
 
 {% block title %}Gekocht{% endblock %}
 
 {% block content %}
     <div class="container-fluid">
-        <h1 class="h3 mb-3">Gekocht</h1>
+        <div class="page-head">
+            <div>
+                <h1 class="h3 mb-1">Gekocht</h1>
+                <p class="page-head__sub mb-0">Was wann auf den Tisch kam — und wie es war.</p>
+            </div>
+            {% if summary.entries %}
+                <div class="page-head__stats">
+                    <span class="stat"><strong>{{ summary.entries }}</strong> Einträge</span>
+                    {% if summary.average %}
+                        <span class="stat"><strong>⌀ {{ summary.average }}</strong> von 5</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
 
         {% if people %}
-            <div class="mb-3">
-                <a href="?" class="btn btn-sm mb-1 {% if not by %}btn-primary{% else %}btn-outline-secondary{% endif %}">Alle</a>
+            <div class="people-tabs mb-3">
+                <a href="?" class="people-tab {% if not by %}people-tab--active{% endif %}">Alle</a>
                 {% for person in people %}
                     <a href="?by={{ person.username|urlencode }}"
-                       class="btn btn-sm mb-1 {% if by == person.username %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ person.name }}</a>
+                       class="people-tab {% if by == person.username %}people-tab--active{% endif %}">{{ person.name }}</a>
                 {% endfor %}
             </div>
         {% endif %}
 
         {% for month in months %}
-            <h2 class="h5 mt-4 mb-2">{{ month.label }}</h2>
-            <div class="list-group mb-2">
-                {% for log in month.logs %}
-                    <a class="list-group-item list-group-item-action py-2 text-decoration-none text-reset"
-                       href="/recipe/{{ log.recipe_id }}">
-                        <div class="d-flex justify-content-between">
-                            <span class="font-weight-bold">{{ log.recipe.name }}</span>
-                            <span class="text-muted small">{% localtime on %}{{ log.created_at|date:"j.n.Y" }}{% endlocaltime %}</span>
-                        </div>
-                        <div class="small text-muted">
-                            {{ log.created_by.get_user_display_name }}
-                            {% if log.rating %}
-                                <span class="text-warning ms-2" title="{{ log.rating }} von 5">{{ log.stars }}</span>
-                                <span class="text-muted ms-1">{{ log.rating_label }}</span>
-                            {% endif %}
-                        </div>
-                        {% if log.comment %}
-                            <div class="small">„{{ log.comment }}“</div>
+            <h2 class="h6 text-uppercase text-muted mt-4 mb-2">{{ month.label }}</h2>
+            {% for log in month.logs %}
+                <a class="cooked-row mb-2 text-decoration-none" href="/recipe/{{ log.recipe_id }}">
+                    <div class="d-flex justify-content-between align-items-baseline">
+                        <span class="cooked-row__name">{{ log.recipe.name }}</span>
+                        <span class="cooked-row__date">{% localtime on %}{{ log.created_at|date:"j.n.Y" }}{% endlocaltime %}</span>
+                    </div>
+                    <div class="d-flex align-items-center flex-wrap mt-1">
+                        <span class="cooked-row__person mr-2">{{ log.created_by.get_user_display_name }}</span>
+                        {% if log.rating %}
+                            {% include "kitchen/_rating_chip.html" with rating=log.rating label=log.rating_number %}
                         {% endif %}
-                    </a>
-                {% endfor %}
-            </div>
+                    </div>
+                    {% if log.comment %}
+                        <blockquote class="cook-note">„{{ log.comment }}“</blockquote>
+                    {% endif %}
+                </a>
+            {% endfor %}
         {% empty %}
             {% if by %}
                 <p class="text-muted">Für diesen Filter ist nichts eingetragen.</p>

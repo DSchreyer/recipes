@@ -138,20 +138,18 @@ class Candidate:
     last_date: date | None = None
 
     @property
-    def stars(self) -> str:
-        """Glyphs for the card, rounded to the nearest whole star."""
+    def rating_number(self) -> str:
+        """The average as a German decimal, without the sample size."""
         if self.rating is None:
             return ""
-        full = max(0, min(5, int(self.rating + 0.5)))
-        return "★" * full + "☆" * (5 - full)
+        return f"{self.rating:.2f}".rstrip("0").rstrip(".").replace(".", ",")
 
     @property
     def rating_label(self) -> str:
         """The household number, German decimal comma, with its sample size."""
         if self.rating is None:
             return ""
-        label = f"{self.rating:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-        return f"{label} · {self.rating_count}×" if self.rating_count else label
+        return f"{self.rating_number} · {self.rating_count}×" if self.rating_count else self.rating_number
 
 
 # What an unrated recipe is worth in a tie. Not zero: a dish nobody has rated
