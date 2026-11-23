@@ -20,6 +20,41 @@
             {% endif %}
         </div>
 
+        {% if saved %}
+            <div class="alert alert-success py-2">Gekocht gespeichert.</div>
+        {% endif %}
+
+        {% if nudge.cooks %}
+            <div class="nudge mb-3">
+                <p class="mb-1"><strong>{{ nudge.cooks }}×</strong> gekocht, davon
+                    <strong>{{ nudge.unrated }}×</strong> ohne Bewertung.</p>
+                {% if nudge.recipes %}
+                    <p class="small text-muted mb-1">Wieder gekocht, nie bewertet:</p>
+                    <ul class="nudge-list mb-0">
+                        {% for item in nudge.recipes %}
+                            <li class="d-flex align-items-center flex-wrap mb-1">
+                                <a href="/recipe/{{ item.recipe }}" class="mr-2">{{ item.recipe__name }}</a>
+                                <span class="small text-muted mr-2">{{ item.cooks }}×</span>
+                                <form method="post" action="{% url 'kitchen:picker' %}"
+                                      class="d-inline-flex align-items-center">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="recipe" value="{{ item.recipe }}">
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <select name="rating" class="form-control form-control-sm mr-1"
+                                            aria-label="Bewertung für {{ item.recipe__name }}">
+                                        {% for option in rating_options %}
+                                            <option value="{{ option.value }}">{{ option.label }} ★</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-sm btn-outline-secondary" type="submit">Bewerten</button>
+                                </form>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        {% endif %}
+
         {% if people %}
             <div class="people-tabs mb-3">
                 <a href="?" class="people-tab {% if not by %}people-tab--active{% endif %}">Alle</a>
