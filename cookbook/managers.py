@@ -273,6 +273,9 @@ class RecipeQuerySet(models.QuerySet):
             filters += ft_filters + tg_filters
 
         if not filters:
+            # Nobody configured a search field at all: this path is the exact-match
+            # one, and a substring on ingredients would be a different promise than
+            # the one it makes for names (see the exact-match tests).
             from cookbook.models import SearchFields
             query_filter = Q()
             for f in SearchFields.objects.all().values_list('field', flat=True):
@@ -280,7 +283,7 @@ class RecipeQuerySet(models.QuerySet):
                 query_filter |= Q(**{lookup: config.string})
             return self.filter(query_filter)
 
-        query_filter = Q()
+        query_filter = self._ingredient_name_filter(config)
         for f in filters:
             query_filter |= f
 
@@ -303,6 +306,31 @@ class RecipeQuerySet(models.QuerySet):
             qs = qs.annotate(score=F('similarity'))
 
         return qs
+
+    def _ingredient_name_filter(self, config):
+        """Substring match on the canonical food name of an ingredient.
+
+        Measured on the household library: 'Hähnchenbrust' sits in 291 ingredient
+        rows and the search box returned one recipe, because the stored vectors
+        hold name, description and instruction only — an ingredient is nowhere in
+        them. Widening the vectors would need a schema change plus `rebuildindex`
+        on a live library, and it would not bridge a compound anyway: Postgres
+        stems 'Hähnchen' and 'Hähnchenbrust' to different lexemes, so 'Hähnchen'
+        would still miss every 'Hähnchenbrust'. A LIKE on the food name finds both
+        from one typed word, needs no index of its own and no maintenance run, and
+        rides on the join the `foods` filter already uses.
+
+        Only added when the caller has not configured the field itself: a user who
+        put 'Ingredients' into their icontains or istartswith fields has already
+        decided how it should be matched, and their anchored search must not grow
+        a substring match behind their back.
+        """
+        field = 'steps__ingredients__food__name'
+        if any(f.startswith(field) for f in config.icontains_fields + config.istartswith_fields):
+            return Q()
+        if field in config.unaccent_fields:
+            field += '__unaccent'
+        return Q(**{f'{field}__icontains': config.string})
 
     def _build_fulltext_filters(self, config):
         if not config.fulltext_fields:
