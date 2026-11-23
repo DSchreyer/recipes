@@ -32,3 +32,30 @@ def test_unrated_recipe_has_no_rating(search_recipes, u1_s1):
 
     rows = {row['id']: row for row in response.json()['results']}
     assert rows[search_recipes.r1.id]['rating'] is None
+
+
+def test_a_quarter_star_survives_the_round_trip(search_recipes, space_1, u1_s1):
+    """The household rates in 0.25 steps; a store that rounds to int loses it."""
+    from decimal import Decimal
+
+    user = auth.get_user(u1_s1)
+    CookLogFactory.create(recipe=search_recipes.r1, created_by=user, rating=Decimal('4.25'), space=space_1)
+
+    response = u1_s1.get('/api/recipe/')
+
+    rows = {row['id']: row for row in response.json()['results']}
+    assert rows[search_recipes.r1.id]['rating'] == 4.25
+
+
+def test_rating_filter_accepts_a_quarter_step(search_recipes, space_1, u1_s1):
+    from decimal import Decimal
+
+    user = auth.get_user(u1_s1)
+    CookLogFactory.create(recipe=search_recipes.r1, created_by=user, rating=Decimal('4.25'), space=space_1)
+    CookLogFactory.create(recipe=search_recipes.r2, created_by=user, rating=Decimal('4.00'), space=space_1)
+
+    response = u1_s1.get('/api/recipe/', {'rating_gte': '4.25'})
+
+    ids = {row['id'] for row in response.json()['results']}
+    assert search_recipes.r1.id in ids
+    assert search_recipes.r2.id not in ids

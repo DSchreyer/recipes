@@ -14,6 +14,7 @@
                     color="tandoor"
                     class="d-inline-flex align-center"
                 ></v-rating>
+                <span v-if="latest.rating" class="ms-1">{{ formatRating(latest.rating) }}</span>
                 <span v-if="latest.comment">— „{{ latest.comment }}“</span>
             </span>
         </div>
@@ -22,10 +23,19 @@
             <v-card>
                 <v-card-title>Gekocht</v-card-title>
                 <v-card-text>
-                    <v-label>Bewertung</v-label>
-                    <div>
-                        <v-rating v-model="form.rating" clearable hover density="compact"></v-rating>
+                    <div class="d-flex justify-space-between align-center">
+                        <v-label>Bewertung</v-label>
+                        <span class="text-body-2 text-medium-emphasis">{{ ratingLabel }}</span>
                     </div>
+                    <v-slider
+                        v-model="form.rating"
+                        :min="0"
+                        :max="5"
+                        :step="0.25"
+                        color="tandoor"
+                        thumb-label
+                        hide-details
+                    ></v-slider>
                     <v-row dense class="mt-2">
                         <v-col cols="12" sm="6">
                             <v-date-input v-model="form.createdAt" label="Datum"></v-date-input>
@@ -87,13 +97,21 @@ const form = ref<{
     servings?: number | null
 }>({})
 
+function formatRating(value: number): string {
+    return value.toFixed(2).replace(/\.?0+$/, '').replace('.', ',')
+}
+
+const ratingLabel = computed(() => form.value.rating
+    ? `${formatRating(form.value.rating)} ★`
+    : 'ohne')
+
 const lastWhen = computed(() => latest.value?.createdAt
     ? DateTime.fromJSDate(latest.value.createdAt).toLocaleString(DateTime.DATE_MED)
     : '')
 
 function open() {
     form.value = {
-        rating: null,
+        rating: 0,
         comment: null,
         createdAt: new Date(),
         servings: props.servings ?? props.recipe.servings ?? 1,

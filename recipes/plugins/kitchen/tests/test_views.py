@@ -250,3 +250,24 @@ def test_the_query_string_survives_the_redirect(kitchen):
     assert 'carb=Beilage' in response['Location']
     assert 'seed=abc' in response['Location']
     assert response['Location'].endswith('geloggt=1')
+
+
+def test_a_quarter_star_is_stored_as_given(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    client.post(URL, {'recipe': dish.id, 'rating': '4.25', 'date': '2026-11-20'})
+
+    with scopes_disabled():
+        log = CookLog.objects.get()
+    assert float(log.rating) == 4.25
+
+
+def test_a_rating_off_the_quarter_step_is_ignored(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+
+    client.post(URL, {'recipe': dish.id, 'rating': '4.1', 'date': '2026-11-20'})
+
+    with scopes_disabled():
+        assert CookLog.objects.get().rating is None
