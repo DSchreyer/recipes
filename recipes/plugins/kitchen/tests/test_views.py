@@ -7,6 +7,8 @@ household read another's recipes.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from cookbook.models import CookLog, UserSpace
 from cookbook.tests.factories import (
@@ -17,9 +19,39 @@ from django.test import Client
 from django.utils import timezone
 from django.urls import reverse
 from django_scopes import scopes_disabled
+from recipes.plugins.kitchen import views
 
 pytestmark = pytest.mark.django_db
 URL = '/api/plugins/kitchen/'
+HISTORY = '/api/plugins/kitchen/gekocht/'
+
+# 2026-11-24 is a Tuesday, 2026-11-28 a Saturday.
+TUESDAY = date(2026, 11, 24)
+SATURDAY = date(2026, 11, 28)
+
+
+@pytest.fixture(autouse=True)
+def _a_saturday(monkeypatch):
+    """These tests are about ranking, not about the calendar.
+
+    The weekday default would otherwise decide what a bare picker shows
+    depending on the day the suite runs. Tests that care set their own day and
+    win, because they patch the same function afterwards.
+    """
+    monkeypatch.setattr(views, '_today', lambda: SATURDAY)
+
+
+def _cooked(space, recipe, rating=None, times=1):
+    with scopes_disabled():
+        user = UserFactory.create()
+        UserSpace.objects.create(user=user, space=space, active=True)
+        for _ in range(times):
+            CookLogFactory.create(recipe=recipe, created_by=user, rating=rating, space=space)
+    return recipe
+
+
+def _proven(space, name, rating=5, times=1):
+    return _cooked(space, _kitchen(space, name), rating=rating, times=times)
 
 
 def _kitchen(space, name, keywords=(), foods=()):
@@ -199,9 +231,118 @@ def test_next_cannot_leave_the_site(kitchen):
     assert response['Location'].startswith('/api/plugins/kitchen/')
 
 
-# --- the history page ---------------------------------------------------------
+# --- the weekday default ------------------------------------------------------
 
-HISTORY = '/api/plugins/kitchen/gekocht/'
+def test_bare_picker_on_a_weekday_opens_on_proven(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    for name in ('Eintopf', 'Auflauf', 'Suppe', 'Salat'):
+        _proven(space, name)
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL).content.decode()
+
+    assert 'Eintopf' in body
+    assert 'Neuland' not in body
+    # Visible and reversible: the toggle is on, and its link turns it off.
+    assert 'href="?minrating=0"' in body
+    assert 'Montag bis Donnerstag' in body
+    # Re-roll, more cards and the chips keep the default instead of dropping it.
+    assert 'minrating=4' in body
+
+
+def test_the_weekday_default_is_off_from_friday_to_sunday(kitchen, monkeypatch):
+    client, space = kitchen
+    for name in ('Eintopf', 'Auflauf', 'Suppe', 'Salat'):
+        _proven(space, name)
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL).content.decode()  # the fixture's Saturday
+
+    assert 'Neuland' in body
+    assert 'minrating=0' not in body
+
+
+def test_minrating_zero_switches_the_default_off_in_one_click(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    for name in ('Eintopf', 'Auflauf', 'Suppe', 'Salat'):
+        _proven(space, name)
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL, {'minrating': '0'}).content.decode()
+
+    assert 'Neuland' in body
+    assert 'href="?minrating=4"' in body  # and one click puts it back
+
+
+def test_a_url_with_its_own_parameter_is_never_reinterpreted(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    for name in ('Eintopf', 'Auflauf', 'Suppe', 'Salat'):
+        _proven(space, name)
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL, {'n': '12'}).content.decode()
+
+    assert 'Neuland' in body
+    assert 'minrating=0' not in body
+    assert 'Montag bis Donnerstag' not in body
+
+
+def test_an_explicit_minrating_is_honoured_on_a_weekday(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    _proven(space, 'Solide', rating=2)
+    _proven(space, 'Gut', rating=5)
+
+    body = client.get(URL, {'minrating': '2'}).content.decode()
+
+    assert 'Solide' in body
+    assert 'Gut' in body
+
+
+def test_saving_on_the_default_page_does_not_change_the_page(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    for name in ('Eintopf', 'Auflauf', 'Suppe', 'Salat'):
+        _proven(space, name)
+    _kitchen(space, 'Neuland')
+
+    # The redirect after a save carries `geloggt=1`, which is a flash, not a
+    # question: the page must not turn into a different one just because a
+    # card was rated.
+    body = client.get(URL, {'geloggt': '1'}).content.decode()
+
+    assert 'Neuland' not in body
+    assert 'href="?minrating=0"' in body
+
+
+def test_the_default_steps_aside_when_too_few_dishes_are_proven(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    _proven(space, 'Eintopf')
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL).content.decode()
+
+    assert 'Neuland' in body
+    assert 'deshalb heute ohne „nur Bewährtes“' in body
+    assert 'minrating=0' not in body  # nothing was switched on, so nothing to switch off
+
+
+def test_the_default_steps_aside_when_nothing_is_rated_at_all(kitchen, monkeypatch):
+    client, space = kitchen
+    monkeypatch.setattr(views, '_today', lambda: TUESDAY)
+    _kitchen(space, 'Neuland')
+
+    body = client.get(URL).content.decode()
+
+    assert 'Neuland' in body
+    assert 'Noch nichts bewährt' in body
+
+
+# --- the history page ---------------------------------------------------------
 
 
 def test_history_groups_by_month(kitchen):
@@ -287,3 +428,69 @@ def test_history_shows_the_quarter_and_the_display_name(kitchen):
     assert '4,25' in body
     assert '>Daniel<' in body
     assert '>daniel<' not in body
+# --- gekocht, aber nie bewertet ----------------------------------------------
+
+def test_cooked_page_names_the_unrated_cooks(kitchen):
+    client, space = kitchen
+    dish = _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+    _proven(space, 'Kartoffelsuppe')
+
+    body = client.get(HISTORY).content.decode()
+
+    assert '<strong>3×</strong>' in body
+    assert '<strong>2×</strong>' in body
+    assert 'ohne Bewertung' in body
+    nudge = body.split('nudge-list', 1)[1].split('</ul>', 1)[0]
+    assert 'Linseneintopf' in nudge
+    assert f'name="recipe" value="{dish.id}"' in nudge
+    assert 'action="/api/plugins/kitchen/"' in nudge
+    assert 'name="rating"' in nudge
+
+
+def test_the_nudge_leaves_out_a_recipe_that_was_ever_rated(kitchen):
+    client, space = kitchen
+    twice = _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+    one_rated = _kitchen(space, 'Risotto')
+    _cooked(space, one_rated, rating=None, times=1)
+    _cooked(space, one_rated, rating=4, times=1)
+
+    body = client.get(HISTORY).content.decode()
+    nudge = body.split('nudge-list', 1)[1].split('</ul>', 1)[0]
+
+    assert 'Linseneintopf' in nudge
+    assert 'Risotto' not in nudge
+
+
+def test_the_nudge_form_returns_to_the_cooked_page(kitchen):
+    client, space = kitchen
+    dish = _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+
+    response = client.post(URL, {'recipe': dish.id, 'rating': '4.25',
+                                 'next': '/api/plugins/kitchen/gekocht/'})
+
+    assert response.status_code == 302
+    assert response['Location'].endswith('/api/plugins/kitchen/gekocht/?geloggt=1')
+    with scopes_disabled():
+        assert float(CookLog.objects.filter(rating__gt=0).get().rating) == 4.25
+
+
+def test_card_badge_marks_a_twice_cooked_never_rated_recipe(kitchen):
+    client, space = kitchen
+    dish = _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+    _cooked(space, _kitchen(space, 'Einmal'), rating=None, times=1)
+
+    body = client.get(URL, {'minrating': '0'}).content.decode()
+
+    assert 'gekocht, nie bewertet' in body
+    assert f'href="#stars-{dish.id}"' in body
+    assert f'id="stars-{dish.id}"' in body
+    assert body.count('class="badge badge-warning badge-nudge"') == 1
+
+
+def test_a_saved_cook_is_visible_on_the_cooked_page(kitchen):
+    client, space = kitchen
+    _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+
+    body = client.get(HISTORY, {'geloggt': '1'}).content.decode()
+
+    assert 'Gekocht gespeichert.' in body

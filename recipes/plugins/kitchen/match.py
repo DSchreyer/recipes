@@ -136,6 +136,9 @@ class Candidate:
     rating_count: int = 0
     last_note: str = ""
     last_date: date | None = None
+    # Cooked at least twice and never rated: the card says so instead of
+    # quietly recommending a dish the household keeps making and never judges.
+    cooked_unrated: bool = False
 
     @property
     def rating_number(self) -> str:
@@ -171,6 +174,16 @@ def household_ratings() -> dict[int, tuple[float, int]]:
         .annotate(average=Avg("rating"), count=Count("pk"))
     )
     return {row["recipe"]: (float(row["average"]), row["count"]) for row in rows}
+
+
+def cook_counts() -> dict[int, int]:
+    """Recipe id -> number of cooks in the space, rated or not.
+
+    One aggregate instead of a query per card; the picker only needs to know
+    whether a dish has been cooked twice.
+    """
+    rows = CookLog.objects.values("recipe").annotate(cooks=Count("pk"))
+    return {row["recipe"]: row["cooks"] for row in rows}
 
 
 def last_notes() -> dict[int, tuple[date, str, str]]:
@@ -245,6 +258,6 @@ def search_foods(term: str, limit: int = 20) -> list[str]:
 __all__ = [
     "AXIS_LABEL", "AXIS_PREFIX", "Candidate", "DEFAULT_CARDS", "EXCLUDED_KEYWORD",
     "MAX_CARDS", "NEUTRAL_RATING", "STAPLES", "STAPLE_SUFFIXES", "axis_values",
-    "food_names", "household_ratings", "is_staple", "last_notes", "missing",
+    "cook_counts", "food_names", "household_ratings", "is_staple", "last_notes", "missing",
     "rank", "recipes_for", "search_foods", "short_label", "toggle",
 ]
