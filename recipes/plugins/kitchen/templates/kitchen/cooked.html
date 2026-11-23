@@ -31,6 +31,7 @@
                             {{ log.created_by.get_user_display_name }}
                             {% if log.rating %}
                                 <span class="text-warning ms-2" title="{{ log.rating }} von 5">{{ log.stars }}</span>
+                                <span class="text-muted ms-1">{{ log.rating|floatformat:"-2" }}</span>
                             {% endif %}
                         </div>
                         {% if log.comment %}
