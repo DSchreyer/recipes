@@ -11,16 +11,13 @@
                 <div class="flex-grow-1 cursor-pointer" @click="openRecipe()">
                     <p class="font-weight-bold mt-2">{{ props.recipe.name }}</p>
                     <!-- Only when rated: an empty star row reads as "bad". -->
-                    <v-rating
+                    <rating-stars
                         v-if="props.recipe.rating"
-                        :model-value="props.recipe.rating"
-                        readonly
-                        half-increments
-                        size="x-small"
-                        density="compact"
-                        color="tandoor"
-                        class="ml-n2"
-                    ></v-rating>
+                        :value="props.recipe.rating"
+                        size="sm"
+                        chip
+                        class="mt-1 mb-2"
+                    ></rating-stars>
                 </div>
                 <div class="mt-1">
                     <!--                    <v-btn icon="fas fa-ellipsis-v" size="small" variant="plain"></v-btn>-->
@@ -114,6 +111,7 @@ import {Recipe, RecipeOverview} from "@/openapi";
 
 import RecipeContextMenu from "@/components/inputs/RecipeContextMenu.vue";
 import RecipeImage from "@/components/display/RecipeImage.vue";
+import RatingStars from "@/components/display/RatingStars.vue";
 import {useRouter} from "vue-router";
 import PrivateRecipeBadge from "@/components/display/PrivateRecipeBadge.vue";
 

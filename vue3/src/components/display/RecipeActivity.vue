@@ -5,8 +5,11 @@
             <v-row dense>
                 <v-col cols="12" md="4">
                     <v-label>{{ $t('Rating') }}</v-label>
-                    <br/>
-                    <v-rating v-model="newCookLog.rating" clearable hover density="compact"></v-rating>
+                    <div class="d-flex align-center ga-2">
+                        <v-slider v-model="newCookLog.rating" :min="0" :max="5" :step="0.25" color="star"
+                                  hide-details density="compact"></v-slider>
+                        <span class="text-body-2 text-medium-emphasis text-no-wrap">{{ ratingText }}</span>
+                    </div>
                 </v-col>
                 <v-col cols="12" md="4">
 
@@ -47,8 +50,7 @@
 
                     <template #append>
                         <v-list-item-action class="flex-column align-end">
-                            <v-rating density="comfortable" size="x-small" color="tandoor" v-model="c.rating" half-increments readonly
-                                      v-if="c.rating != undefined" style="overflow: hidden"></v-rating>
+                            <rating-stars :value="c.rating" size="sm" chip v-if="c.rating != undefined"></rating-stars>
                             <v-spacer></v-spacer>
                             <v-tooltip location="top" :text="DateTime.fromJSDate(c.createdAt).toLocaleString(DateTime.DATETIME_MED)" v-if="c.createdAt != undefined">
                                 <template v-slot:activator="{ props }">
@@ -69,13 +71,14 @@
 
 <script setup lang="ts">
 
-import {onMounted, PropType, ref, watch} from "vue";
+import {computed, onMounted, PropType, ref, watch} from "vue";
 import {ApiApi, CookLog, Recipe} from "@/openapi";
 import {DateTime} from "luxon";
 import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
 import {VDateInput} from 'vuetify/labs/VDateInput'
 import {useUserPreferenceStore} from "@/stores/UserPreferenceStore.ts";
 import ModelEditDialog from "@/components/dialogs/ModelEditDialog.vue";
+import RatingStars from "@/components/display/RatingStars.vue";
 
 const props = defineProps({
     recipe: {
@@ -89,6 +92,13 @@ const props = defineProps({
 })
 
 const newCookLog = ref({} as CookLog);
+
+// The slider reads 0 when the thumb is at the start; 0 is not a verdict.
+const ratingText = computed(() => {
+    const rating = newCookLog.value.rating
+    if (!rating) return '—'
+    return Number(rating).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')
+})
 
 const cookLogs = ref([] as CookLog[])
 const loading = ref(false)
@@ -129,6 +139,7 @@ function recLoadCookLog(recipeId: number, page: number = 1) {
  */
 function resetForm() {
     newCookLog.value = {} as CookLog
+    newCookLog.value.rating = 0
     newCookLog.value.servings = props.servings
     newCookLog.value.createdAt = new Date()
     newCookLog.value.recipe = props.recipe.id!
@@ -139,8 +150,10 @@ function resetForm() {
  */
 function saveCookLog() {
     const api = new ApiApi()
+    const payload = {...newCookLog.value}
+    if (!payload.rating) payload.rating = null
 
-    api.apiCookLogCreate({cookLog: newCookLog.value}).then(r => {
+    api.apiCookLogCreate({cookLog: payload}).then(r => {
         cookLogs.value.push(r)
         resetForm()
     }).catch(err => {

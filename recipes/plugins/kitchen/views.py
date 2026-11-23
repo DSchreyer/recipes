@@ -170,6 +170,14 @@ def build(request) -> dict:
         "allow2_active": params.get("missing") == "2",
         "proven": href(params, minrating="") if min_rating else href(params, minrating="4"),
         "proven_active": min_rating is not None,
+        "filters_active": bool(
+            any(values for values in axes.values()) or foods or params.get("q")
+        ),
+        "filter_count": (
+            sum(len(values) for values in axes.values())
+            + len(foods)
+            + (1 if params.get("q") else 0)
+        ),
         "reset": "?",
         "limit": limit,
     }
@@ -255,6 +263,11 @@ def _month_label(when: datetime) -> str:
     return f"{MONTHS[when.month - 1]} {when.year}"
 
 
+def _german_number(value: float) -> str:
+    """A rating as the household writes it: 4,25 rather than 4.25."""
+    return f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
 class CookedView(TemplateView):
     """What we cooked, newest first, grouped by month.
 
@@ -279,11 +292,7 @@ class CookedView(TemplateView):
             label = _month_label(timezone.localtime(log.created_at))
             if not months or months[-1]["label"] != label:
                 months.append({"label": label, "logs": []})
-            log.stars = "★" * int(float(log.rating or 0) + 0.5)
-            log.rating_label = (
-                f"{float(log.rating):.2f}".rstrip("0").rstrip(".").replace(".", ",")
-                if log.rating else ""
-            )
+            log.rating_number = _german_number(float(log.rating)) if log.rating else ""
             months[-1]["logs"].append(log)
 
         people = [
@@ -296,7 +305,15 @@ class CookedView(TemplateView):
                 .distinct()
             )
         ]
-        context.update(months=months, people=people, by=by)
+
+        entries = sum(len(month["logs"]) for month in months)
+        rated = [float(log.rating) for month in months for log in month["logs"] if log.rating]
+        summary = {
+            "entries": entries,
+            "average": _german_number(sum(rated) / len(rated)) if rated else "",
+            "rated": len(rated),
+        }
+        context.update(months=months, people=people, by=by, summary=summary)
         return context
 
 

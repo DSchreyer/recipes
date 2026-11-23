@@ -56,6 +56,9 @@ export default createVuetify({
                     success: '#82aa8b',
                     info: '#385f84',
                     warning: '#eaaa21',
+                    // The rating accent. The theme's sand and amber are too pale
+                    // on the cream background to read as a filled star.
+                    star: '#b8791a',
                     error: '#a7240e',
 
                     save: '#82aa8b',
@@ -75,6 +78,9 @@ export default createVuetify({
                     success: '#82aa8b',
                     info: '#385f84',
                     warning: '#eaaa21',
+                    // The rating accent. The theme's sand and amber are too pale
+                    // on the cream background to read as a filled star.
+                    star: '#b8791a',
                     error: '#a7240e',
 
                     save: '#82aa8b',

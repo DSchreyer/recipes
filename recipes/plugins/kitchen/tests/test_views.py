@@ -77,7 +77,7 @@ def test_card_names_what_is_missing_and_ignores_staples(kitchen):
     _kitchen(space, 'Kokoscurry', foods=['Reis', 'Kokosmilch', 'Salz', 'Öl'])
 
     body = client.get(URL, {'foods': 'Reis'}).content.decode()
-    missing_lines = [line for line in body.splitlines() if 'fehlt:' in line]
+    missing_lines = [line for line in body.splitlines() if 'ingredient-tag--miss' in line]
 
     assert any('Kokosmilch' in line for line in missing_lines)
     assert not any('Salz' in line or 'Öl' in line for line in missing_lines)

@@ -29,7 +29,6 @@
                     </v-sheet>
                     <keywords-component variant="flat" class="ms-1" :keywords="recipe.keywords"></keywords-component>
                     <private-recipe-badge :users="recipe.shared" v-if="recipe._private"></private-recipe-badge>
-                    <v-rating v-model="recipe.rating" size="x-small" v-if="recipe.rating" half-increments readonly></v-rating>
                     <v-sheet class="ps-2 text-disabled">
                         {{ recipe.description }}
                     </v-sheet>
@@ -87,8 +86,6 @@
                             </p>
 
                             <private-recipe-badge :users="recipe.shared" v-if="recipe._private"></private-recipe-badge>
-
-                            <v-rating v-model="recipe.rating" size="x-small" v-if="recipe.rating" readonly></v-rating>
 
                             <cook-log-quick :recipe="recipe" :servings="servings" class="mt-2" @saved="onCooked"></cook-log-quick>
 
