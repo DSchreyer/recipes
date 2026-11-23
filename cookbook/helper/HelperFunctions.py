@@ -13,8 +13,9 @@ from requests_hardened import Config, Manager
 
 
 class Round(Func):
+    """Two decimals: a recipe rating is kept in 0.25 steps, not rounded to a star."""
     function = 'ROUND'
-    template = '%(function)s(%(expressions)s, 0)'
+    template = '%(function)s(%(expressions)s, 2)'
 
 
 def str2bool(v):

@@ -1491,7 +1491,8 @@ class TelegramBot(models.Model, PermissionModelMixin):
 
 class CookLog(ExportModelOperationsMixin('cook_log'), models.Model, PermissionModelMixin):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
-    rating = models.IntegerField(null=True, blank=True)
+    # Quarter-star steps (4.25) are what the household asked for; 3,2 holds 5.00.
+    rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
     servings = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)
     comment = models.TextField(null=True, blank=True)
 

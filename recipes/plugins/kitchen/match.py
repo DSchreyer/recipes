@@ -150,7 +150,7 @@ class Candidate:
         """The household number, German decimal comma, with its sample size."""
         if self.rating is None:
             return ""
-        label = f"{self.rating:.1f}".replace(".", ",")
+        label = f"{self.rating:.2f}".rstrip("0").rstrip(".").replace(".", ",")
         return f"{label} · {self.rating_count}×" if self.rating_count else label
 
 

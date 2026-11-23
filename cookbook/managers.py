@@ -54,7 +54,7 @@ class RecipeQuerySet(models.QuerySet):
         from cookbook.helper.HelperFunctions import Round
         return self.annotate(rating=Round(Avg(
             'cooklog__rating',
-            filter=Q(cooklog__created_by=user, cooklog__rating__isnull=False),
+            filter=Q(cooklog__created_by=user, cooklog__rating__gt=0),
         )))
 
     def with_last_cooked(self, user, space):
@@ -165,15 +165,17 @@ class RecipeQuerySet(models.QuerySet):
     def by_rating(self, user, exact=None, gte=None, lte=None):
         if not any(x is not None for x in [exact, gte, lte]):
             return self
+        from decimal import Decimal
         qs = self.with_rating(user)
         if exact is not None:
-            if int(exact) == 0:
+            exact = Decimal(str(exact))
+            if exact == 0:
                 return qs.filter(Q(rating__isnull=True) | Q(rating=0))
-            return qs.filter(rating=round(int(exact)))
+            return qs.filter(rating=exact)
         if gte is not None:
-            qs = qs.filter(rating__gte=int(gte))
+            qs = qs.filter(rating__gte=Decimal(str(gte)))
         if lte is not None:
-            qs = qs.filter(rating__lte=int(lte))
+            qs = qs.filter(rating__lte=Decimal(str(lte)))
         return qs
 
     def by_times_cooked(self, user, space, exact=None, gte=None, lte=None):

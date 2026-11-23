@@ -1749,9 +1749,9 @@ class RecipePagination(PageNumberPagination):
 
     OpenApiParameter(name='units', description=_('ID of unit a recipe should have.'), type=int),
 
-    OpenApiParameter(name='rating', description=_('Exact rating of recipe'), type=int),
-    OpenApiParameter(name='rating_gte', description=_('Rating a recipe should have or greater.'), type=int),
-    OpenApiParameter(name='rating_lte', description=_('Rating a recipe should have or smaller.'), type=int),
+    OpenApiParameter(name='rating', description=_('Exact rating of recipe, in 0.25 steps'), type=float),
+    OpenApiParameter(name='rating_gte', description=_('Rating a recipe should have or greater, in 0.25 steps.'), type=float),
+    OpenApiParameter(name='rating_lte', description=_('Rating a recipe should have or smaller, in 0.25 steps.'), type=float),
 
     OpenApiParameter(name='timescooked', description=_('Filter recipes cooked X times.'), type=int),
     OpenApiParameter(name='timescooked_gte', description=_('Filter recipes cooked X times or more.'), type=int),

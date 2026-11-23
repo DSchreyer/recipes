@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import date, datetime, time
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from django.shortcuts import redirect
@@ -148,6 +149,10 @@ def build(request) -> dict:
         "rows": rows,
         "note": note,
         "today": timezone.localdate().isoformat(),
+        "rating_options": [
+            {"value": f"{step / 4:.2f}", "label": f"{step / 4:.2f}".rstrip("0").rstrip(".").replace(".", ",")}
+            for step in range(1, 21)
+        ],
         "cards": cards,
         "picked": [
             {"name": name, "href": food_href(params, name)} for name in foods
@@ -192,8 +197,7 @@ class PickerView(TemplateView):
         if recipe is None:
             return redirect(self._back(request))
 
-        raw_rating = request.POST.get("rating", "")
-        rating = int(raw_rating) if raw_rating.isdigit() and 1 <= int(raw_rating) <= 5 else None
+        rating = _quarter(request.POST.get("rating", ""))
         comment = (request.POST.get("note") or "").strip() or None
 
         CookLog.objects.create(
@@ -217,6 +221,17 @@ class PickerView(TemplateView):
         ):
             return target
         return reverse("kitchen:picker")
+
+
+def _quarter(raw: str) -> Decimal | None:
+    """A rating is 0.25–5.00 in quarter steps. Anything else is no rating."""
+    try:
+        value = Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+    if not (Decimal("0.25") <= value <= 5) or value % Decimal("0.25") != 0:
+        return None
+    return value
 
 
 def _when(raw: str | None) -> datetime:
@@ -264,7 +279,7 @@ class CookedView(TemplateView):
             label = _month_label(log.created_at)
             if not months or months[-1]["label"] != label:
                 months.append({"label": label, "logs": []})
-            log.stars = "★" * (log.rating or 0)
+            log.stars = "★" * int(round(log.rating or 0))
             months[-1]["logs"].append(log)
 
         people = (
