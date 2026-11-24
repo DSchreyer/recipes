@@ -1,0 +1,12 @@
+{% comment %}
+A star row in quarter steps. Pass `rating` (0–5) and `number` (the German
+number for the screen reader). The fill is clipped by CSS, so 4.25 draws four
+whole stars and a quarter of the fifth. Callers print the number themselves.
+{% endcomment %}
+<span class="rating-stars" role="img" aria-label="{{ number|default:rating }} von 5 Sternen">
+    <span class="rating-stars__stars" aria-hidden="true">
+        <span class="rating-stars__track">{% for i in "12345" %}<i class="far fa-star"></i>{% endfor %}</span>
+        <span class="rating-stars__fill"
+              style="width: calc({{ rating }} / 5 * 100%)">{% for i in "12345" %}<i class="fas fa-star"></i>{% endfor %}</span>
+    </span>
+</span>
