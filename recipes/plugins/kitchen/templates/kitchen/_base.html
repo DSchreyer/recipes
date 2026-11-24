@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+{% block extra_head %}
+    <style>
+        /* One star language for both plugin pages. The fill is clipped by CSS so
+           a 4.25 rating draws four whole stars and a quarter of the fifth. The
+           ochre is the same token as the Vue theme's `star` colour. */
+        .rating-stars {
+            display: inline-flex;
+            align-items: center;
+            vertical-align: -.08em;
+            white-space: nowrap;
+            font-size: .95rem;
+            line-height: 1;
+        }
+
+        .rating-stars__stars {
+            position: relative;
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .rating-stars__track {
+            color: #d8ccb6;
+        }
+
+        .rating-stars__fill {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            overflow: hidden;
+            color: #b8791a;
+            white-space: nowrap;
+        }
+
+        .rating-stars__track i,
+        .rating-stars__fill i {
+            display: inline-block;
+            width: 1em;
+            margin: 0;
+            text-align: center;
+        }
+
+        /* Stars and the number in one quiet pill. */
+        .rating-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: .12rem .5rem .12rem .42rem;
+            border-radius: 999px;
+            background: rgba(184, 121, 26, .10);
+            border: 1px solid rgba(184, 121, 26, .22);
+            color: #6b4a12;
+            font-size: .8rem;
+            line-height: 1.7;
+            white-space: nowrap;
+        }
+
+        .rating-chip .rating-stars {
+            font-size: .88rem;
+        }
+
+        .rating-chip__value {
+            margin-left: .4rem;
+            padding-left: .5rem;
+            border-left: 1px solid rgba(184, 121, 26, .3);
+            font-size: .95rem;
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+        }
+
+        /* A row of empty stars that submits one tap. Rendered in reverse order in
+           the template so hovering a star can fill every star to its left. */
+        .star-picker {
+            display: inline-flex;
+            flex-direction: row-reverse;
+            align-items: center;
+            gap: .02rem;
+            margin-left: -.4rem;
+        }
+
+        .star-picker__star {
+            background: none;
+            border: 0;
+            padding: .12rem .2rem;
+            min-width: 2rem;
+            min-height: 2rem;
+            color: #c9bda6;
+            font-size: 1.32rem;
+            line-height: 1;
+            transition: color .1s ease, transform .1s ease;
+        }
+
+        .star-picker__star:hover,
+        .star-picker__star:focus-visible,
+        .star-picker__star:hover ~ .star-picker__star,
+        .star-picker__star:focus-visible ~ .star-picker__star {
+            color: #b8791a;
+        }
+
+        .star-picker__star:hover {
+            transform: translateY(-1px);
+        }
+
+        .star-picker__star:focus-visible {
+            outline: 2px solid #b8791a;
+            outline-offset: 1px;
+            border-radius: .25rem;
+        }
+
+        .cook-label {
+            display: block;
+            margin-bottom: .1rem;
+            font-size: .68rem;
+            letter-spacing: .07em;
+            text-transform: uppercase;
+            color: #a8a094;
+        }
+
+        /* The filter wall: 100 chips that bury the answer. Closed by default. */
+        .filters {
+            display: inline-block;
+            margin: 0 0 .75rem;
+            padding: 0;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
+            background: #fffdfa;
+        }
+
+        .filters[open] {
+            display: block;
+            padding: .55rem .8rem;
+            border-radius: .55rem;
+            border-color: #e9e0d3;
+        }
+
+        .filters summary {
+            list-style: none;
+            cursor: pointer;
+            padding: .22rem .85rem;
+            color: #7a7166;
+            font-size: .82rem;
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .filters summary:hover {
+            color: #4a4238;
+        }
+
+        .filters[open] summary {
+            padding: 0 0 .45rem;
+        }
+
+        .filters summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .filters summary::after {
+            content: " ▾";
+            font-size: .8em;
+            color: #a8a094;
+        }
+
+        .filters[open] summary::after {
+            content: " ▴";
+        }
+
+        .filters summary .filters__count {
+            color: #b8791a;
+        }
+
+        .filters .filter-axis {
+            font-size: .7rem;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            color: #a8a094;
+            margin-bottom: .2rem;
+        }
+
+        .filters .btn {
+            border-radius: 999px;
+            font-size: .78rem;
+            padding: .12rem .6rem;
+        }
+
+        /* One quiet button language on both plugin pages. Tandoor's theme paints
+           every outline button in its hot secondary red; on a page whose only
+           real action is "Nochmal", a hundred of those is a wall. */
+        .btn-outline-secondary {
+            border-color: #e0d5c4;
+            color: #7a7166;
+        }
+
+        .btn-outline-secondary:hover,
+        .btn-outline-secondary:focus {
+            background: rgba(184, 121, 26, .10);
+            border-color: #c9b392;
+            color: #6b4a12;
+        }
+
+        .btn-primary {
+            background: #b8791a;
+            border-color: #b8791a;
+        }
+
+        .btn-primary:hover,
+        .btn-primary:focus {
+            background: #a66c16;
+            border-color: #a66c16;
+        }
+
+        /* A note from the last cook, set like a quotation. */
+        .cook-note {
+            margin: .4rem 0 0;
+            padding: .05rem 0 .05rem .55rem;
+            border-left: 3px solid rgba(184, 121, 26, .45);
+            color: #6f665b;
+            font-size: .85rem;
+            font-style: italic;
+            line-height: 1.4;
+        }
+
+        /* One row of the cooked history. */
+        .cooked-row {
+            display: block;
+            padding: .7rem .9rem;
+            border: 1px solid #e9e0d3;
+            border-radius: .55rem;
+            background: #fffdfa;
+            color: inherit;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+
+        /* Page furniture shared by both plugin pages. */
+        .page-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: .75rem;
+            margin-bottom: 1rem;
+        }
+
+        .page-head__sub {
+            color: #8a8175;
+            font-size: .88rem;
+        }
+
+        .page-head__stats {
+            display: flex;
+            gap: 1.1rem;
+            padding: .45rem .8rem;
+            border: 1px solid #e9e0d3;
+            border-radius: .55rem;
+            background: #fffdfa;
+        }
+
+        .page-head__stats .stat {
+            color: #8a8175;
+            font-size: .78rem;
+            white-space: nowrap;
+        }
+
+        .page-head__stats .stat strong {
+            color: #4a4238;
+            font-size: .95rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .people-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .35rem;
+        }
+
+        .people-tab {
+            padding: .2rem .7rem;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
+            color: #7a7166;
+            font-size: .8rem;
+            text-decoration: none;
+            transition: background .15s ease, border-color .15s ease, color .15s ease;
+        }
+
+        .people-tab:hover {
+            border-color: #c9b392;
+            color: #4a4238;
+            text-decoration: none;
+        }
+
+        .people-tab--active {
+            background: #b8791a;
+            border-color: #b8791a;
+            color: #fff;
+        }
+
+        .people-tab--active:hover {
+            background: #a66c16;
+            border-color: #a66c16;
+            color: #fff;
+        }
+
+        /* Picker toolbar: the actions on the left, the search on the right. */
+        .picker-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: .6rem;
+        }
+
+        .picker-toolbar__actions {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .35rem;
+        }
+
+        .picker-toolbar__actions .btn {
+            border-radius: 999px;
+            font-size: .8rem;
+        }
+
+        .picker-toolbar__search {
+            flex: 0 1 22rem;
+        }
+
+        .picked-foods {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .35rem;
+        }
+
+        .picked-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: .12rem .6rem;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
+            color: #7a7166;
+            font-size: .8rem;
+            text-decoration: none;
+        }
+
+        .picked-chip:hover {
+            border-color: #c9b392;
+            color: #4a4238;
+            text-decoration: none;
+        }
+
+        .picked-chip--on {
+            background: rgba(184, 121, 26, .12);
+            border-color: rgba(184, 121, 26, .35);
+            color: #6b4a12;
+        }
+
+        .cooked-row:hover {
+            border-color: #d9c9b0;
+            box-shadow: 0 2px 10px rgba(107, 74, 18, .07);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .cooked-row__name {
+            font-weight: 600;
+            font-size: 1.02rem;
+        }
+
+        .cooked-row__date {
+            color: #9a9186;
+            font-size: .78rem;
+            white-space: nowrap;
+        }
+
+        .cooked-row__person {
+            color: #7a7166;
+            font-size: .82rem;
+        }
+
+        /* The card's own disclosure: closed by default, so the card stays quiet. */
+        .cook-details summary {
+            list-style: none;
+            cursor: pointer;
+            color: #8a8175;
+            font-size: .78rem;
+        }
+
+        .cook-details summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .cook-details summary::after {
+            content: " ▾";
+            font-size: .8em;
+        }
+
+        .cook-details[open] summary::after {
+            content: " ▴";
+        }
+
+        /* Card furniture. */
+        .card {
+            border: 1px solid #e9e0d3;
+            border-radius: .6rem;
+            overflow: hidden;
+            background: #fffdfa;
+            transition: box-shadow .15s ease, border-color .15s ease;
+        }
+
+        .card:hover {
+            border-color: #dccbb0;
+            box-shadow: 0 4px 16px rgba(107, 74, 18, .08);
+        }
+
+        .card .card-title {
+            display: block;
+            font-weight: 600;
+            font-size: 1rem;
+            line-height: 1.25;
+            margin-bottom: 0;
+        }
+
+        .card .card-img-top {
+            background: #f3ede3;
+        }
+
+        .card-placeholder__letter {
+            color: #b3a58f;
+            font-size: 2rem;
+            font-weight: 300;
+        }
+
+        .card-actions {
+            margin-top: .55rem;
+            padding-top: .45rem;
+            border-top: 1px solid #f0e9dd;
+        }
+
+        .card .cook-details {
+            margin-top: .15rem;
+        }
+
+        .ingredient-tag {
+            display: inline-block;
+            padding: .05rem .4rem;
+            border-radius: 999px;
+            font-size: .66rem;
+            font-weight: 600;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            vertical-align: .06em;
+        }
+
+        .ingredient-tag--have {
+            background: rgba(58, 125, 68, .12);
+            color: #2f6b3a;
+        }
+
+        .ingredient-tag--miss {
+            background: rgba(176, 68, 45, .12);
+            color: #a13f2a;
+        }
+    </style>
+{% endblock %}

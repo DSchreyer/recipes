@@ -75,7 +75,7 @@ cookbook/static/vue
 vue/webpack-stats.json
 /docker-compose.override.yml
 vue/node_modules
-/recipes/plugins
+# /recipes/plugins is tracked in this fork: the kitchen and ai_import plugins are ours.
 vetur.config.js
 cookbook/static/vue
 vue/webpack-stats.json

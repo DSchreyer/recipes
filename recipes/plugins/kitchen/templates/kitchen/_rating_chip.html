@@ -1,0 +1,8 @@
+{% comment %}
+Stars and the number in one pill. Pass `rating` (0–5) and `label` (the number
+as text, already German-formatted). Callers print nothing else.
+{% endcomment %}
+<span class="rating-chip" title="{{ label }} von 5 Sternen">
+    {% include "kitchen/_stars.html" with rating=rating number=label %}
+    <span class="rating-chip__value">{{ label }}</span>
+</span>
