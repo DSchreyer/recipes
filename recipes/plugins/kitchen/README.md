@@ -118,7 +118,7 @@ on `cooklog:<pk>`. To re-prove it after a deploy, from the Atlas host:
 
 ```sh
 # 1. The key authenticates and the Tandoor provider resolves a recipe.
-docker exec atlas-tandoor-recipes-1 /opt/recipes/venv/bin/python3 - <<'PY'
+docker exec -i atlas-tandoor-recipes-1 /opt/recipes/venv/bin/python3 - <<'PY'
 import requests
 key = open('/run/secrets/sparky_fitness_api_key').read().strip()
 base = 'http://atlas-sparkyfitness-server-1:3010'
@@ -132,6 +132,8 @@ s = requests.get(f'{base}/api/foods/tandoor/search',
 assert s.ok and s.json(), (s.status_code, s.text[:120])
 print('resolve ok:', s.json()[0]['name'], s.json()[0]['default_variant'].get('calories'), 'kcal')
 PY
+# (`-i` matters: without it the heredoc never reaches python and the step
+# silently proves nothing.)
 
 # 2. One cook log becomes one diary entry, then both sides are cleaned up.
 docker exec -i atlas-tandoor-recipes-1 sh -c   'export POSTGRES_PASSWORD=$(cat /run/secrets/tandoor_db_password); cd /opt/recipes && /opt/recipes/venv/bin/python3 manage.py shell' <<'PY'
