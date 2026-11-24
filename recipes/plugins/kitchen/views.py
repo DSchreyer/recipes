@@ -13,6 +13,7 @@ from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
+from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
@@ -24,6 +25,19 @@ from cookbook.models import CookLog, Recipe
 from . import match
 
 PARAMS = (*match.AXIS_PREFIX, "foods", "q", "seed", "n", "missing", "minrating")
+
+# Monday to Thursday the picker opens on what has already earned four stars;
+# Friday to Sunday stay as they were, because the weekend is when there is time
+# to try something new.
+WEEKDAY_DEFAULT_MINRATING = 4
+# Below this many proven dishes the default would hide the library rather than
+# narrow it, so it steps aside -- loudly, in one sentence.
+WEEKDAY_DEFAULT_MIN_RECIPES = 4
+WEEKDAYS = frozenset({0, 1, 2, 3})
+
+# A cleared star is not a verdict; `match.household_ratings` already ignores
+# zeros, and the nudge must too, or "nie bewertet" would count cleared rows.
+UNRATED = Q(rating__isnull=True) | Q(rating=0)
 
 
 def current(request) -> dict[str, str]:
@@ -40,6 +54,35 @@ def href(params: dict[str, str], **changes: str) -> str:
         else:
             merged.pop(key, None)
     return "?" + urlencode(merged) if merged else "?"
+
+
+def _today() -> date:
+    """The household's calendar day (Europe/Berlin, from TIME_ZONE).
+
+    A function, not a constant, so the tests can stand on a Tuesday.
+    """
+    return timezone.localdate()
+
+
+def _fallback_sentence(proven: int) -> str:
+    """One sentence saying why the default is not filtering today."""
+    if not proven:
+        return "Noch nichts bewährt – deshalb heute ohne „nur Bewährtes“."
+    if proven == 1:
+        return "Nur ein bewährtes Rezept – deshalb heute ohne „nur Bewährtes“."
+    return f"Nur {proven} bewährte Rezepte – deshalb heute ohne „nur Bewährtes“."
+
+
+def _weekday_default(request) -> bool:
+    """True only for a bare picker visit on Monday to Thursday.
+
+    Deliberately narrow: any query string is a question the user asked -- a
+    filter, a bookmark, a re-roll -- and is answered exactly as written. The
+    `geloggt` flash after a save is not a question, so it does not switch the
+    default off; otherwise rating a card would silently reload a different page.
+    """
+    keys = set(request.GET) - {"geloggt"}
+    return not keys and _today().weekday() in WEEKDAYS
 
 
 def values_of(params: dict[str, str], key: str) -> list[str]:
@@ -90,8 +133,17 @@ def build(request) -> dict:
     allow = 2 if params.get("missing") == "2" else 1
     seed = params.get("seed", "")
     min_rating = int(params["minrating"]) if params.get("minrating", "").isdigit() else None
+    # `minrating=0` is how the toggle writes "aus": the bare URL already means
+    # "the weekday default" on Monday to Thursday, so removing the key could
+    # never switch the filter off -- it would land back on the default.
+    if min_rating == 0:
+        min_rating = None
+    defaulted = min_rating is None and _weekday_default(request)
+    if defaulted:
+        min_rating = WEEKDAY_DEFAULT_MINRATING
     ratings = match.household_ratings()
     notes = match.last_notes()
+    cooks = match.cook_counts()
 
     candidates = []
     for recipe in qs.prefetch_related("steps__ingredients__food"):
@@ -117,7 +169,29 @@ def build(request) -> dict:
             rating_count=rating_count,
             last_note=last_note,
             last_date=last_date,
+            cooked_unrated=cooks.get(recipe.pk, 0) >= 2 and recipe.pk not in ratings,
         ))
+
+    # The default must never filter silently: with fewer than four proven
+    # dishes it would shrink the library instead of curating it, so it gives
+    # way and says why. An explicit `minrating` is the user's own answer and is
+    # never second-guessed.
+    if defaulted:
+        proven = sum(
+            1 for c in candidates
+            if c.rating is not None and c.rating >= WEEKDAY_DEFAULT_MINRATING
+        )
+        if proven < WEEKDAY_DEFAULT_MIN_RECIPES:
+            min_rating = None
+            defaulted = False
+            note = _fallback_sentence(proven)
+
+    # While the default is on, every link this page builds carries it: a
+    # re-roll, "mehr zeigen" or a chip must narrow the proven list, not quietly
+    # drop back to the whole library. The page's own URL stays bare, so a
+    # bookmark of it still means "today's default".
+    if defaulted:
+        params["minrating"] = str(WEEKDAY_DEFAULT_MINRATING)
 
     # With no ingredient list there is nothing to be missing, so every recipe
     # qualifies. With one, the tier rule applies -- and if even "short by two"
@@ -148,11 +222,8 @@ def build(request) -> dict:
         "params": params,
         "rows": rows,
         "note": note,
-        "today": timezone.localdate().isoformat(),
-        "rating_options": [
-            {"value": f"{step / 4:.2f}", "label": f"{step / 4:.2f}".rstrip("0").rstrip(".").replace(".", ",")}
-            for step in range(1, 21)
-        ],
+        "today": _today().isoformat(),
+        "rating_options": rating_options(),
         "cards": cards,
         "picked": [
             {"name": name, "href": food_href(params, name)} for name in foods
@@ -168,8 +239,9 @@ def build(request) -> dict:
         "more_label": "weniger" if params.get("n") == "12" else "mehr zeigen",
         "allow2": href(params, missing="") if params.get("missing") == "2" else href(params, missing="2"),
         "allow2_active": params.get("missing") == "2",
-        "proven": href(params, minrating="") if min_rating else href(params, minrating="4"),
+        "proven": href(params, minrating="0") if min_rating is not None else href(params, minrating="4"),
         "proven_active": min_rating is not None,
+        "proven_default": defaulted,
         "filters_active": bool(
             any(values for values in axes.values()) or foods or params.get("q")
         ),
@@ -268,6 +340,39 @@ def _german_number(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
+def rating_options() -> list[dict[str, str]]:
+    """0,25 to 5,00 in quarter steps -- the only values `_quarter` accepts."""
+    return [
+        {"value": f"{step / 4:.2f}", "label": _german_number(step / 4)}
+        for step in range(1, 21)
+    ]
+
+
+def _nudge() -> dict:
+    """Cooks that never got a star, and the dishes that keep coming back.
+
+    Scoped to the space like every other read here, and deliberately not
+    filtered by person: it is a statement about the library, not about who is
+    looking. A recipe only counts as "nie bewertet" when *no* cook of it was
+    ever rated -- one star anywhere means somebody has an opinion already.
+    """
+    logs = CookLog.objects.all()
+    rated = CookLog.objects.filter(rating__gt=0).values("recipe")
+    rows = (
+        logs.filter(UNRATED)
+        .exclude(recipe__in=rated)
+        .values("recipe", "recipe__name")
+        .annotate(cooks=Count("pk"))
+        .filter(cooks__gte=2)
+        .order_by("-cooks", "recipe__name")[:5]
+    )
+    return {
+        "cooks": logs.count(),
+        "unrated": logs.filter(UNRATED).count(),
+        "recipes": list(rows),
+    }
+
+
 class CookedView(TemplateView):
     """What we cooked, newest first, grouped by month.
 
@@ -313,7 +418,17 @@ class CookedView(TemplateView):
             "average": _german_number(sum(rated) / len(rated)) if rated else "",
             "rated": len(rated),
         }
-        context.update(months=months, people=people, by=by, summary=summary)
+        context.update(
+            months=months,
+            people=people,
+            by=by,
+            summary=summary,
+            nudge=_nudge(),
+            rating_options=rating_options(),
+            # The nudge form posts to PickerView and comes back here; without
+            # this the save would be invisible on the page it returns to.
+            saved=bool(self.request.GET.get("geloggt")),
+        )
         return context
 
 

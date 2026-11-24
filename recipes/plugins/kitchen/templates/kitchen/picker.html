@@ -58,6 +58,11 @@
             </form>
         </div>
 
+        {% if proven_default %}
+            <p class="small text-muted mb-2">Montag bis Donnerstag steht „nur Bewährtes“
+                an – der Knopf schaltet es mit einem Klick aus.</p>
+        {% endif %}
+
         {% if picked or food_results %}
             <div class="picked-foods mb-3">
                 {% for item in picked %}
@@ -102,6 +107,10 @@
                             {% if card.last_note %}
                                 <blockquote class="cook-note">„{{ card.last_note|truncatechars:70 }}“</blockquote>
                             {% endif %}
+                            {% if card.cooked_unrated %}
+                                <a class="badge badge-warning badge-nudge" href="#stars-{{ card.recipe_id }}"
+                                   title="Mindestens zweimal gekocht, nie bewertet">gekocht, nie bewertet</a>
+                            {% endif %}
                             {% if card.have %}
                                 <div class="small mt-1"><span class="ingredient-tag ingredient-tag--have">nutzt</span> {{ card.have|join:", " }}</div>
                             {% endif %}
@@ -115,7 +124,8 @@
                                 <input type="hidden" name="recipe" value="{{ card.recipe_id }}">
                                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                 <span class="cook-label">Gekocht?</span>
-                                <div class="star-picker" role="group" aria-label="Gekocht mit Sternen eintragen">
+                                <div class="star-picker" id="stars-{{ card.recipe_id }}"
+                                     role="group" aria-label="Gekocht mit Sternen eintragen">
                                     {% for n in "54321" %}
                                         <button type="submit" name="rating" value="{{ n }}.00"
                                                 class="star-picker__star" aria-label="{{ n }} Sterne"
