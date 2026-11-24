@@ -33,9 +33,13 @@ dialog alike.
 | `SPARKY_FITNESS_TANDOOR_PROVIDER_ID` | *(unset)* | Pin the Sparky provider when the instance has more than one Tandoor provider; otherwise the first one wins |
 | `SPARKY_FITNESS_BUDGET_SECONDS` | `5` | Whole-push request budget. Sparky's Tandoor provider runs one search plus ten parallel detail fetches — 6–8 s measured on Atlas — so the stack sets `20`. The push is a background thread; a larger budget costs nothing |
 
-**Inert mode is the default.** With no key nothing is built and no request is
+**Inert mode is the fallback.** With no key nothing is built and no request is
 made: one INFO line at startup says so, no line per cook. The deployed instance
-has no key today, so this is the tested state, not a fallback.
+has been wired since 2026-11-24 (daniel's SparkyFitness API key from
+`/srv/atlas/secrets/sparkyfitness/tandoor_api_key`, mounted as
+`SPARKY_FITNESS_API_KEY_FILE`; `SPARKY_FITNESS_BUDGET_SECONDS=20` because
+Sparky's Tandoor provider needs ~7 s per resolve) — inert is what you get when
+that file is missing or unreadable.
 
 **The cook log survives the diary.** The push is scheduled with
 `transaction.on_commit` (a rolled-back cook is not a meal), runs in a daemon
@@ -105,6 +109,71 @@ planned the meal; `--user` moves the entries to another person's diary.
 Django names a management command after its module, and a module name cannot
 contain a dash, so the implementation is `management/commands/diary_push.py`
 with a three-line `diary-push.py` beside it. Both spellings work.
+
+## Smoke test
+
+Proven 2026-11-24 (image `kitchen-v23`): a cook log becomes one diary entry in
+the cook's diary with the provider's per-serving numbers, and the entry upserts
+on `cooklog:<pk>`. To re-prove it after a deploy, from the Atlas host:
+
+```sh
+# 1. The key authenticates and the Tandoor provider resolves a recipe.
+docker exec atlas-tandoor-recipes-1 /opt/recipes/venv/bin/python3 - <<'PY'
+import requests
+key = open('/run/secrets/sparky_fitness_api_key').read().strip()
+base = 'http://atlas-sparkyfitness-server-1:3010'
+h = {'x-api-key': key, 'Accept': 'application/json'}
+r = requests.get(f'{base}/api/external-providers', headers=h, timeout=5)
+assert r.ok, r.status_code
+pid = [p for p in r.json() if p.get('provider_type') == 'tandoor'][0]['id']
+s = requests.get(f'{base}/api/foods/tandoor/search',
+                 headers={**h, 'x-provider-id': pid},
+                 params={'query': 'Linsen'}, timeout=30)
+assert s.ok and s.json(), (s.status_code, s.text[:120])
+print('resolve ok:', s.json()[0]['name'], s.json()[0]['default_variant'].get('calories'), 'kcal')
+PY
+
+# 2. One cook log becomes one diary entry, then both sides are cleaned up.
+docker exec -i atlas-tandoor-recipes-1 sh -c   'export POSTGRES_PASSWORD=$(cat /run/secrets/tandoor_db_password); cd /opt/recipes && /opt/recipes/venv/bin/python3 manage.py shell' <<'PY'
+import datetime, requests
+from django_scopes import scopes_disabled
+from cookbook.models import CookLog, Recipe
+from recipes.plugins.kitchen import diary
+
+with scopes_disabled():
+    recipe = Recipe.objects.get(name__icontains='Linsen')
+    log = CookLog.objects.create(recipe=recipe, created_by_id=1, space=recipe.space,
+                                 servings=2, comment='Smoke test (wird geloescht)')
+diary.wait_for_pending(30)
+key = open('/run/secrets/sparky_fitness_api_key').read().strip()
+h = {'x-api-key': key, 'Accept': 'application/json'}
+base = 'http://atlas-sparkyfitness-server-1:3010'
+today = datetime.date.today().isoformat()
+g = requests.get(f'{base}/api/food-entries', headers=h, params={'selectedDate': today}, timeout=10)
+rows = g.json()
+if isinstance(rows, dict):
+    rows = rows.get('foodEntries') or rows.get('entries') or []
+hit = [r for r in rows if r.get('food_name') == recipe.name and r.get('source') == 'tandoor'
+       and r.get('notes', '').endswith('Daniel')]
+assert hit, 'bridge entry missing'
+print('entry ok:', hit[0]['food_name'], hit[0]['calories'], 'kcal', hit[0]['meal_type'])
+with scopes_disabled():
+    log.delete()
+d = requests.delete(f"{base}/api/food-entries/{hit[0]['id']}", headers=h, timeout=10)
+assert d.ok, d.status_code
+print('cleaned up')
+PY
+
+# 3. The plan command answers even on a day without plans.
+docker exec atlas-tandoor-recipes-1 sh -c \
+  'export POSTGRES_PASSWORD=$(cat /run/secrets/tandoor_db_password); cd /opt/recipes && /opt/recipes/venv/bin/python3 manage.py diary-push --dry-run'
+```
+
+Notes for whoever runs this: the list endpoint does **not** expose
+`source_id`, so match the entry on `food_name` + `notes`; a diary entry whose
+cook log was deleted is cleaned up by hand (the bridge never deletes). The
+`:3010` server has no published port — run the probes from inside a container
+on the `frontdoor` network, as above.
 
 ## What it deliberately does not do
 
