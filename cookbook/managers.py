@@ -295,8 +295,13 @@ class RecipeQuerySet(models.QuerySet):
         if has_rank:
             qs = qs.annotate(rank=Coalesce(Max(search_rank), 0.0))
         if has_fuzzy:
-            similarity = fuzzy_match.filter(pk=OuterRef('pk')).values('similarity')
-            qs = qs.annotate(similarity=Coalesce(Subquery(similarity), 0.0))
+            # `fuzzy_match` is the CASE built from the pre-computed scores, or
+            # a queryset for match sets too large to spell out.
+            if hasattr(fuzzy_match, 'values'):
+                similarity = fuzzy_match.filter(pk=OuterRef('pk')).values('similarity')
+                qs = qs.annotate(similarity=Coalesce(Subquery(similarity), 0.0))
+            else:
+                qs = qs.annotate(similarity=fuzzy_match)
 
         if has_rank and has_fuzzy:
             qs = qs.annotate(score=F('rank') + F('similarity'))
@@ -331,6 +336,48 @@ class RecipeQuerySet(models.QuerySet):
         if field in config.unaccent_fields:
             field += '__unaccent'
         return Q(**{f'{field}__icontains': config.string})
+
+    @staticmethod
+    def _text_field_matches(text_fields, query):
+        """Recipe ids matched through fields that carry no stored vector.
+
+        `SearchVector('keywords__name__unaccent')` on Recipe multiplies into
+        recipe x keyword (141 217 rows on the household library) and builds a
+        tsvector for each of them: 600 ms for a 629-row keyword table, and the
+        same again for ingredient names. Matching the small side first -- the
+        keyword rows, the food rows -- and then the recipes that carry them is
+        the same answer for a fraction of the cost.
+        """
+        from cookbook.models import Food, Keyword, Recipe
+
+        ids: set[int] = set()
+        leftovers = []
+        for field in text_fields:
+            if field == 'keywords__name__unaccent':
+                keywords = Keyword.objects.annotate(
+                    vector=SearchVector('name__unaccent')
+                ).filter(vector=query).values('pk')
+                ids |= set(Recipe.objects.filter(keywords__id__in=keywords).values_list('pk', flat=True))
+            elif field == 'steps__ingredients__food__name__unaccent':
+                foods = Food.objects.annotate(
+                    vector=SearchVector('name__unaccent')
+                ).filter(vector=query).values('pk')
+                ids |= set(
+                    Recipe.objects.filter(steps__ingredients__food__in=foods)
+                    .values_list('pk', flat=True)
+                    .distinct()
+                )
+            else:
+                leftovers.append(field)
+
+        if leftovers:
+            ids |= set(
+                Recipe.objects.annotate(vector=SearchVector(*leftovers))
+                .filter(vector=query)
+                .values_list('pk', flat=True)
+            )
+
+        return ids
 
     def _build_fulltext_filters(self, config):
         if not config.fulltext_fields:
@@ -368,14 +415,23 @@ class RecipeQuerySet(models.QuerySet):
                 text_fields.append(_TEXT_FIELDS[f])
 
             if f in _RANK_MAP:
-                rank_terms.append(SearchRank(_RANK_MAP[f], config.search_query, cover_density=True))
+                target = _RANK_MAP[f]
+                # A stored `SearchVectorField` must be ranked by reference. A
+                # bare name string makes SearchRank wrap it in SearchVector(),
+                # which casts the tsvector back to text and re-parses it for
+                # every row -- 800 ms of `ts_rank_cd(to_tsvector(col::text))`
+                # in a query whose real work is 63 ms.
+                expression = F(target) if f in _PRECOMPUTED else SearchVector(target)
+                rank_terms.append(SearchRank(expression, config.search_query, cover_density=True))
 
-        # Text fields without stored vectors need SearchVector at query time
+        # Text fields without stored vectors need SearchVector at query time.
+        # As a `id__in=<queryset>` this was evaluated per outer row: the
+        # keyword join multiplies to 141 217 rows and cost 615 ms of the 2.4 s
+        # a `query=Bolognese` request took on the household library. The match
+        # set is at most one entry per recipe, so it is read once and spelled
+        # out -- the planner then uses the primary key and stops.
         if text_fields:
-            from cookbook.models import Recipe
-            filters.append(Q(id__in=Recipe.objects.annotate(
-                vector=SearchVector(*text_fields),
-            ).filter(vector=config.search_query)))
+            filters.append(Q(pk__in=list(self._text_field_matches(text_fields, config.search_query))))
 
         search_rank = None
         for term in rank_terms:
@@ -392,13 +448,41 @@ class RecipeQuerySet(models.QuerySet):
             trigram = TrigramSimilarity(f, config.string) if trigram is None else trigram + TrigramSimilarity(f, config.string)
 
         from cookbook.models import Recipe
-        fuzzy_match = (
+
+        # The trigram score was previously carried as a queryset: `pk__in=` of it
+        # plus a correlated `Subquery` for the annotation. Both are re-evaluated
+        # per outer row, and because the OR-set now includes an ingredient join
+        # the outer row count is the whole join (measured: 3 096 subplan loops,
+        # 3.0 s for `query=Bolognese` on 270 recipes, plus 1.4 s of JIT).
+        # Evaluating it once costs one sequential pass over the recipe table;
+        # the ids then go into the query as literals and the score as a CASE.
+        # Above a few hundred matches that literal list is the bigger problem,
+        # so the correlated form stays the fallback.
+        scores = dict(
             Recipe.objects.annotate(trigram=trigram)
             .values('pk')
             .annotate(similarity=Max('trigram'))
             .filter(similarity__gt=config.trigram_threshold)
+            .values_list('pk', 'similarity')
         )
-        return [Q(pk__in=fuzzy_match.values('pk'))], fuzzy_match
+        # Zero matches also take the correlated form: a CASE that is only a
+        # default degenerates into `ORDER BY 0.0`, which Postgres rejects.
+        if len(scores) > 500 or not scores:
+            fuzzy_match = (
+                Recipe.objects.annotate(trigram=trigram)
+                .values('pk')
+                .annotate(similarity=Max('trigram'))
+                .filter(similarity__gt=config.trigram_threshold)
+            )
+            return [Q(pk__in=fuzzy_match.values('pk'))], fuzzy_match
+
+        from django.db.models import Case, FloatField, Value, When
+        match = Case(
+            *[When(pk=pk, then=Value(float(score))) for pk, score in scores.items()],
+            default=Value(0.0),
+            output_field=FloatField(),
+        )
+        return [Q(pk__in=list(scores))], match
 
     # ------------------------------------------------------------------ #
     #  Availability (makenow)
