@@ -141,7 +141,8 @@ from cookbook.models import CookLog, Recipe
 from recipes.plugins.kitchen import diary
 
 with scopes_disabled():
-    recipe = Recipe.objects.get(name__icontains='Linsen')
+    recipe = Recipe.objects.filter(name__icontains='Linsen').first()
+    assert recipe, 'no Linsen recipe in this library'
     log = CookLog.objects.create(recipe=recipe, created_by_id=1, space=recipe.space,
                                  servings=2, comment='Smoke test (wird geloescht)')
 diary.wait_for_pending(30)
