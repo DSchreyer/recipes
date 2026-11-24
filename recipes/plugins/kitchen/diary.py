@@ -11,9 +11,8 @@ Four rules decide the shape of the code.
   ``transaction.on_commit`` -- a rolled back cook is not a meal -- and then runs
   in a daemon thread with a five second budget. Every failure is logged and
   dropped. A diary that is down must never turn a saved cook into a 500.
-* **Inert without a key.** ``SPARKY_FITNESS_API_KEY`` unset means no request is
-  ever built. That is the deployed state today, so it is the state that is
-  tested first.
+* **Inert without a key.** ``SPARKY_FITNESS_API_KEY`` (or ``..._FILE``, the
+  compose convention) unset means no request is ever built.
 * **Saving twice is not eating twice.** Sparky upserts diary entries on
   ``(user_id, source, source_id)``: partial unique index
   ``idx_food_entries_user_source_source_id`` plus ``ON CONFLICT DO UPDATE`` in
@@ -137,9 +136,30 @@ def _split_map(raw: str) -> dict[str, str]:
     return mapping
 
 
+def _env(name: str) -> str:
+    """``NAME`` or ``NAME_FILE``: the stack keeps secrets in files.
+
+    Every other credential in the Tandoor compose file arrives this way
+    (``POSTGRES_PASSWORD_FILE``, ``SECRET_KEY_FILE``), so the diary key does
+    too; ``NAME`` stays supported for a bare ``docker run``.
+    """
+    value = os.getenv(name, '').strip()
+    if value:
+        return value
+    path = os.getenv(f'{name}_FILE', '').strip()
+    if not path:
+        return ''
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return handle.read().strip()
+    except OSError as exc:
+        logger.warning('kitchen.diary: cannot read %s: %s', path, exc)
+        return ''
+
+
 def config() -> Config | None:
     """Read the environment. ``None`` means inert -- the deployed default."""
-    api_key = os.getenv('SPARKY_FITNESS_API_KEY', '').strip()
+    api_key = _env('SPARKY_FITNESS_API_KEY')
     if not api_key:
         return None
     return Config(
