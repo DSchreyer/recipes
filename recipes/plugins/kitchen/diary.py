@@ -9,7 +9,8 @@ Four rules decide the shape of the code.
 
 * **The cook log is never at risk.** The push is scheduled with
   ``transaction.on_commit`` -- a rolled back cook is not a meal -- and then runs
-  in a daemon thread with a five second budget. Every failure is logged and
+  in a daemon thread with a configurable budget (default five seconds,
+  ``SPARKY_FITNESS_BUDGET_SECONDS``). Every failure is logged and
   dropped. A diary that is down must never turn a saved cook into a 500.
 * **Inert without a key.** ``SPARKY_FITNESS_API_KEY`` (or ``..._FILE``, the
   compose convention) unset means no request is ever built.
@@ -57,8 +58,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_URL = 'http://atlas-sparkyfitness-server-1:3010'
 
 # Every request of one push shares this budget: the thread must be gone long
-# before anyone notices it was there.
+# before anyone notices it was there. The push runs after the response
+# (``wait=False``), so a larger budget costs nothing -- it only bounds the
+# daemon thread. Sparky's Tandoor provider runs one search plus ten parallel
+# detail fetches, 6-8 s measured on Atlas, so the stack raises this through
+# ``SPARKY_FITNESS_BUDGET_SECONDS``; junk or a non-positive value falls back.
 BUDGET_SECONDS = 5.0
+
+
+def budget_seconds() -> float:
+    """The whole-push budget; ``SPARKY_FITNESS_BUDGET_SECONDS`` overrides."""
+    try:
+        value = float(os.getenv('SPARKY_FITNESS_BUDGET_SECONDS', ''))
+    except ValueError:
+        return BUDGET_SECONDS
+    return value if value > 0 else BUDGET_SECONDS
 
 # Stamped on every entry we write. ``source_id`` carries the Tandoor row, so
 # the pair is stable across restarts, workers and retries.
@@ -388,7 +402,7 @@ def _push(*, recipe_id: int | None, name: str, when: datetime, meal: str,
     if recipe_id is None:
         logger.warning('kitchen.diary: %s has no recipe; skipped', source_id)
         return None
-    deadline = Deadline()
+    deadline = Deadline(seconds=budget_seconds())
     try:
         user_id = _target_user(cfg, username)
         if cfg.users and user_id is None:

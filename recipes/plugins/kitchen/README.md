@@ -31,6 +31,7 @@ dialog alike.
 | `SPARKY_FITNESS_API_KEY` | *(unset)* | Sent as `x-api-key`. **Unset means inert** |
 | `SPARKY_FITNESS_USERS` | *(unset)* | `daniel:<uuid>,anna:<uuid>` — Tandoor username → SparkyFitness user id, so the person who cooked gets the entry. Unset: everything lands in the key owner's diary, with a warning |
 | `SPARKY_FITNESS_TANDOOR_PROVIDER_ID` | *(unset)* | Pin the Sparky provider when the instance has more than one Tandoor provider; otherwise the first one wins |
+| `SPARKY_FITNESS_BUDGET_SECONDS` | `5` | Whole-push request budget. Sparky's Tandoor provider runs one search plus ten parallel detail fetches — 6–8 s measured on Atlas — so the stack sets `20`. The push is a background thread; a larger budget costs nothing |
 
 **Inert mode is the default.** With no key nothing is built and no request is
 made: one INFO line at startup says so, no line per cook. The deployed instance
@@ -38,8 +39,8 @@ has no key today, so this is the tested state, not a fallback.
 
 **The cook log survives the diary.** The push is scheduled with
 `transaction.on_commit` (a rolled-back cook is not a meal), runs in a daemon
-thread, shares a 5 second budget across its requests, and swallows every
-failure into a warning. A 500 in Tandoor because SparkyFitness is down is the
+thread, shares a request budget across its calls (5 s by default,
+`SPARKY_FITNESS_BUDGET_SECONDS`), and swallows every failure into a warning. A 500 in Tandoor because SparkyFitness is down is the
 one outcome this is built to make impossible.
 
 **Saving twice is not eating twice.** SparkyFitness upserts diary entries on

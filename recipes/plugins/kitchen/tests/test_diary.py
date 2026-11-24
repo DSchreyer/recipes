@@ -89,6 +89,7 @@ def clean(monkeypatch):
     monkeypatch.delenv('SPARKY_FITNESS_URL', raising=False)
     monkeypatch.delenv('SPARKY_FITNESS_USERS', raising=False)
     monkeypatch.delenv('SPARKY_FITNESS_TANDOOR_PROVIDER_ID', raising=False)
+    monkeypatch.delenv('SPARKY_FITNESS_BUDGET_SECONDS', raising=False)
     diary.reset_cache()
     yield
     diary.wait_for_pending(5)
@@ -138,6 +139,30 @@ def test_startup_notice_names_the_url_when_enabled(monkeypatch, caplog):
 
     assert 'http://diary.internal:3010' in caplog.records[0].getMessage()
     assert diary.config().url == 'http://diary.internal:3010'
+
+
+# --------------------------------------------------------------------------
+# the budget
+# --------------------------------------------------------------------------
+
+
+def test_the_budget_comes_from_the_environment(monkeypatch):
+    """Sparky's Tandoor provider needs ~7 s; the stack raises the budget."""
+    monkeypatch.setenv('SPARKY_FITNESS_API_KEY', 'key')
+    monkeypatch.setenv('SPARKY_FITNESS_BUDGET_SECONDS', '20')
+    assert diary.budget_seconds() == 20.0
+
+
+def test_a_junk_budget_falls_back_to_the_default(monkeypatch):
+    monkeypatch.setenv('SPARKY_FITNESS_API_KEY', 'key')
+    monkeypatch.setenv('SPARKY_FITNESS_BUDGET_SECONDS', 'zero')
+    assert diary.budget_seconds() == diary.BUDGET_SECONDS
+
+
+def test_a_non_positive_budget_falls_back_to_the_default(monkeypatch):
+    monkeypatch.setenv('SPARKY_FITNESS_API_KEY', 'key')
+    monkeypatch.setenv('SPARKY_FITNESS_BUDGET_SECONDS', '0')
+    assert diary.budget_seconds() == diary.BUDGET_SECONDS
 
 
 # --------------------------------------------------------------------------
