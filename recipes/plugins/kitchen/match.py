@@ -41,6 +41,190 @@ AXIS_LABEL: dict[str, str] = {
     "diet": "Ernährung",
 }
 
+# --- the cookbook shelves ----------------------------------------------------
+# The keyword tree owns the regions: `Herkunft::<Shelf>::<Country>[::<Region>]`.
+# The maps below only read a tree that predates the rename (country at level 1)
+# and give two shelves a label that reads like a cookbook chapter. Twelve
+# shelves, because that is how cookbooks split the world -- not one chip per
+# country (84) and not five continents (a shelf called "Europa" decides nothing).
+SHELVES: dict[str, tuple[str, ...]] = {
+    "DACH": ("Deutschland", "Österreich", "Schweiz"),
+    "Mittelmeer": ("Italien", "Spanien", "Portugal", "Griechenland"),
+    "Westeuropa": ("Frankreich", "Grossbritannien", "Belgien"),
+    "Nordeuropa": ("Dänemark", "Schweden"),
+    "Osteuropa": ("Polen", "Russland", "Ukraine", "Bosnien"),
+    "Naher Osten": ("Türkei", "Libanon", "Syrien", "Israel"),
+    "Südasien": ("Indien", "Nepal"),
+    "Ostasien": ("China", "Japan", "Korea"),
+    "Südostasien": ("Thailand", "Vietnam", "Indonesien", "Malaysia", "Philippinen"),
+    "Lateinamerika": ("Mexiko",),
+    "Nordamerika": ("USA",),
+    "Afrika": ("Marokko", "Nigeria"),
+}
+
+SHELF_LABELS: dict[str, str] = {
+    "DACH": "Deutschland · Österreich · Schweiz",
+    "Osteuropa": "Osteuropa & Balkan",
+}
+
+COUNTRY_SHELF: dict[str, str] = {
+    country: shelf for shelf, countries in SHELVES.items() for country in countries
+}
+
+# The gate. `Ernaehrung::Fleisch` is a not-vegetarian flag that includes fish
+# (161 tagged, 50 of them fish), so the four classes below are the only
+# partition that neither double-counts nor loses a recipe:
+# 114 Fleisch / 47 Fisch / 53 Vegetarisch / 56 ohne Angabe on 2026-11-25.
+MEAT: frozenset[str] = frozenset({
+    "Hauptzutat::Hähnchen", "Hauptzutat::Kalb", "Hauptzutat::Lamm",
+    "Hauptzutat::Pute", "Hauptzutat::Rind", "Hauptzutat::Schwein",
+    "Hauptzutat::Wild",
+})
+FISH: frozenset[str] = frozenset({"Hauptzutat::Fisch", "Hauptzutat::Meeresfrüchte"})
+VEG: frozenset[str] = frozenset({"Ernaehrung::Vegetarisch", "Ernaehrung::Vegan"})
+
+CLASSES: tuple[str, ...] = ("fleisch", "fisch", "vegetarisch", "ohne")
+CLASS_LABELS: dict[str, str] = {
+    "fleisch": "Fleisch",
+    "fisch": "Fisch",
+    "vegetarisch": "Vegetarisch",
+    "ohne": "ohne Angabe",
+}
+
+# Seven carb kinds from nine keywords: `Nudeln` and `Teig` are synonyms of
+# `Pasta` and `Brot` (measured 2026-11-25: 41 = 25 + 16, 42 = 41 + 1, no
+# recipe carries both spellings). `ohne` also catches recipes with no Beilage
+# tag at all, so nothing becomes unreachable once a carb is picked.
+CARB_KINDS: dict[str, tuple[str, ...]] = {
+    "Reis": ("Beilage::Reis",),
+    "Kartoffel": ("Beilage::Kartoffel",),
+    "Pasta": ("Beilage::Pasta", "Beilage::Nudeln"),
+    "Brot/Teig": ("Beilage::Brot", "Beilage::Teig"),
+    "Hülsenfrüchte": ("Beilage::Hülsenfrüchte",),
+    "Getreide": ("Beilage::Getreide",),
+    "ohne": ("Beilage::Ohne Beilage",),
+}
+
+# `Aufwand::` carries bilingual twins; the row has two chips, not four.
+EFFORT_KINDS: dict[str, tuple[str, ...]] = {
+    "schnell": ("Aufwand::Schnell", "Aufwand::quick"),
+    "wochenende": ("Aufwand::Wochenende", "Aufwand::weekend"),
+}
+EFFORT_LABELS: dict[str, str] = {"schnell": "Schnell", "wochenende": "Wochenende"}
+
+
+def herkunft(name: str) -> tuple[str, str, str] | None:
+    """(shelf, country, region) for a Herkunft keyword, in either tree shape.
+
+    New: `Herkunft::Mittelmeer::Italien::Toskana`; old: `Herkunft::Italien`.
+    Reading both means the code is correct before and after the rename.
+    """
+    parts = name.split("::")
+    if len(parts) < 2 or parts[0] != "Herkunft":
+        return None
+    rest = parts[1:]
+    if len(rest) >= 2 and rest[0] in SHELVES:
+        return rest[0], rest[1], "::".join(rest[2:])
+    return COUNTRY_SHELF.get(rest[0], ""), rest[0], "::".join(rest[1:])
+
+
+def shelf_label(shelf: str) -> str:
+    return SHELF_LABELS.get(shelf, shelf)
+
+
+def carb_kind(value: str) -> str:
+    """A kind key (`Pasta`) or a raw keyword (`Beilage::Nudeln`) -> kind key."""
+    if value in CARB_KINDS:
+        return value
+    for kind, names in CARB_KINDS.items():
+        if value in names:
+            return kind
+    return value  # unknown: matches nothing, and the page says so
+
+
+def class_of(names: frozenset[str]) -> str:
+    """The gate partition for one recipe's keyword set."""
+    if names & MEAT:
+        return "fleisch"
+    if names & FISH:
+        return "fisch"
+    if names & VEG:
+        return "vegetarisch"
+    return "ohne"
+
+
+def matches(names: frozenset[str], axes: dict[str, str]) -> bool:
+    """One recipe against every active axis: AND across axes, one value each."""
+    for key, value in axes.items():
+        if not value:
+            continue
+        if key == "region":
+            if not any((h := herkunft(name)) and h[0] == value for name in names):
+                return False
+        elif key == "land":
+            if not any((h := herkunft(name)) and h[1] == value for name in names):
+                return False
+        elif key == "sub":
+            if not any((h := herkunft(name)) and h[2] == value for name in names):
+                return False
+        elif key == "klasse":
+            if class_of(names) != value:
+                return False
+        elif key == "protein":
+            if value not in names:
+                return False
+        elif key == "carb":
+            kind = carb_kind(value)
+            if kind == "ohne":
+                if any(n.startswith("Beilage::") and n != "Beilage::Ohne Beilage" for n in names):
+                    return False
+            elif not (names & set(CARB_KINDS.get(kind, ()))):
+                return False
+        elif key == "effort":
+            if not (names & set(EFFORT_KINDS.get(value, ()))):
+                return False
+        else:
+            return False
+    return True
+
+
+def keyword_sets() -> dict[int, frozenset[str]]:
+    """Recipe id -> its keyword names, one query for the whole library.
+
+    Counts per chip are then pure Python over ~270 sets instead of one COUNT
+    per chip; the picker stays one query plus a prefetch.
+    """
+    rows = (
+        Recipe.objects.exclude(keywords__name=EXCLUDED_KEYWORD)
+        .filter(steps__isnull=False)
+        .values_list("id", "keywords__name")
+    )
+    found: dict[int, set[str]] = {}
+    for recipe_id, name in rows:
+        found.setdefault(recipe_id, set())
+        if name:
+            found[recipe_id].add(name)
+    return {recipe_id: frozenset(names) for recipe_id, names in found.items()}
+
+
+def count_matching(sets: dict[int, frozenset[str]], axes: dict[str, str]) -> int:
+    return sum(1 for names in sets.values() if matches(names, axes))
+
+
+def recipe_ids(sets: dict[int, frozenset[str]], axes: dict[str, str]) -> set[int]:
+    return {recipe_id for recipe_id, names in sets.items() if matches(names, axes)}
+
+
+def subregions(shelf: str, country: str) -> list[str]:
+    """The `Herkunft::<Shelf>::<Country>::<Region>` names under one country."""
+    def found(prefix: str) -> list[str]:
+        names = Keyword.objects.filter(name__startswith=prefix).values_list("name", flat=True)
+        return sorted({n.split("::")[3] for n in names if len(n.split("::")) > 3})
+
+    regions = found(f"Herkunft::{shelf}::{country}::")
+    return regions or found(f"Herkunft::{country}::")
+
+
 # Assumed to be in the kitchen. Without this every recipe reports three missing
 # ingredients and the missing list stops meaning anything -- SuperCook's own
 # reviewers call their staples toggle the most important setting on the site.
@@ -256,8 +440,12 @@ def search_foods(term: str, limit: int = 20) -> list[str]:
 
 
 __all__ = [
-    "AXIS_LABEL", "AXIS_PREFIX", "Candidate", "DEFAULT_CARDS", "EXCLUDED_KEYWORD",
-    "MAX_CARDS", "NEUTRAL_RATING", "STAPLES", "STAPLE_SUFFIXES", "axis_values",
-    "cook_counts", "food_names", "household_ratings", "is_staple", "last_notes", "missing",
-    "rank", "recipes_for", "search_foods", "short_label", "toggle",
+    "AXIS_LABEL", "AXIS_PREFIX", "CARB_KINDS", "CLASSES", "CLASS_LABELS",
+    "COUNTRY_SHELF", "Candidate", "DEFAULT_CARDS", "EFFORT_KINDS", "EFFORT_LABELS",
+    "EXCLUDED_KEYWORD", "FISH", "MAX_CARDS", "MEAT", "NEUTRAL_RATING", "SHELVES",
+    "SHELF_LABELS", "STAPLES", "STAPLE_SUFFIXES", "VEG", "axis_values", "carb_kind",
+    "class_of", "cook_counts", "count_matching", "food_names", "herkunft",
+    "household_ratings", "is_staple", "keyword_sets", "last_notes", "matches", "missing",
+    "rank", "recipe_ids", "recipes_for", "search_foods", "shelf_label", "short_label",
+    "subregions", "toggle",
 ]

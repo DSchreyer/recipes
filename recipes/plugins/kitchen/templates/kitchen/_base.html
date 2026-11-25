@@ -116,71 +116,261 @@
             color: #a8a094;
         }
 
-        /* The filter wall: 100 chips that bury the answer. Closed by default. */
-        .filters {
-            display: inline-block;
-            margin: 0 0 .75rem;
-            padding: 0;
-            border: 1px solid #e0d5c4;
-            border-radius: 999px;
-            background: #fffdfa;
+        /* The funnel: rows of hairline pills, each with its count. Always
+           visible on desktop; on a phone the summary is the "Filter (N)" bar
+           and the rows fold under it. */
+        .applied {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .35rem;
+            margin-bottom: .8rem;
         }
 
-        .filters[open] {
-            display: block;
-            padding: .55rem .8rem;
-            border-radius: .55rem;
-            border-color: #e9e0d3;
-        }
-
-        .filters summary {
-            list-style: none;
-            cursor: pointer;
-            padding: .22rem .85rem;
-            color: #7a7166;
-            font-size: .82rem;
-            font-weight: 600;
-            user-select: none;
-        }
-
-        .filters summary:hover {
-            color: #4a4238;
-        }
-
-        .filters[open] summary {
-            padding: 0 0 .45rem;
-        }
-
-        .filters summary::-webkit-details-marker {
+        .applied:empty {
             display: none;
         }
 
-        .filters summary::after {
-            content: " ▾";
-            font-size: .8em;
-            color: #a8a094;
+        .applied-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .14rem .62rem;
+            border: 1px solid rgba(184, 121, 26, .32);
+            border-radius: 999px;
+            background: rgba(184, 121, 26, .10);
+            color: #6b4a12;
+            font-size: .8rem;
+            text-decoration: none;
         }
 
-        .filters[open] summary::after {
-            content: " ▴";
+        .applied-chip:hover {
+            background: rgba(184, 121, 26, .16);
+            color: #5a3d0e;
+            text-decoration: none;
         }
 
-        .filters summary .filters__count {
+        .applied-clear {
+            font-size: .78rem;
+            color: #8a8175;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        .applied-clear:hover {
+            color: #4a4238;
+        }
+
+        .filter-panel {
+            margin: 0 0 1rem;
+            padding: .1rem .95rem;
+            border: 1px solid #e9e0d3;
+            border-radius: .6rem;
+            background: #fffdfa;
+        }
+
+        .filter-panel > summary {
+            display: none;
+        }
+
+        .filter-panel__count {
             color: #b8791a;
         }
 
-        .filters .filter-axis {
-            font-size: .7rem;
-            letter-spacing: .05em;
-            text-transform: uppercase;
-            color: #a8a094;
-            margin-bottom: .2rem;
+        .step {
+            display: grid;
+            grid-template-columns: 5.4rem 1fr;
+            gap: .9rem;
+            padding: .6rem 0;
+            border-top: 1px solid #f0e9dd;
         }
 
-        .filters .btn {
+        .step:first-of-type {
+            border-top: 0;
+        }
+
+        .step-label {
+            padding-top: .5rem;
+            font-size: .66rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #a8a094;
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .3rem;
+            align-items: center;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            min-height: 2.1rem;
+            padding: 0 .72rem;
+            border: 1px solid #e0d5c4;
             border-radius: 999px;
+            background: #fffdfa;
+            color: #7a7166;
+            font-size: .82rem;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: border-color .12s ease, color .12s ease, background .12s ease;
+        }
+
+        .filter-chip:hover {
+            border-color: #c9b392;
+            color: #4a4238;
+            text-decoration: none;
+        }
+
+        .filter-chip--on {
+            background: #b8791a;
+            border-color: #b8791a;
+            color: #fff;
+        }
+
+        .filter-chip--on:hover {
+            background: #a66c16;
+            border-color: #a66c16;
+            color: #fff;
+        }
+
+        .filter-chip--on .filter-chip__n {
+            color: rgba(255, 255, 255, .75);
+        }
+
+        /* A zero is shown, not hidden, and not clickable. */
+        .filter-chip--off {
+            opacity: .55;
+            pointer-events: none;
+        }
+
+        .filter-chip__n {
+            font-size: .72rem;
+            color: #a8a094;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .crumb {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .5rem;
+            margin-bottom: .35rem;
             font-size: .78rem;
-            padding: .12rem .6rem;
+            color: #8a8175;
+        }
+
+        .crumb a {
+            color: #8a8175;
+        }
+
+        .crumb a:hover {
+            color: #4a4238;
+        }
+
+        .crumb b {
+            color: #4a4238;
+            font-weight: 600;
+        }
+
+        .results-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: .6rem;
+            margin: 1rem 0 .6rem;
+        }
+
+        .results-head h2 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 650;
+        }
+
+        .results-head h2 span {
+            color: #a8a094;
+            font-weight: 400;
+        }
+
+        .results-head .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .3rem;
+        }
+
+        .tool {
+            display: inline-flex;
+            align-items: center;
+            min-height: 1.85rem;
+            padding: 0 .68rem;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
+            background: #fffdfa;
+            color: #7a7166;
+            font-size: .78rem;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .tool:hover {
+            border-color: #c9b392;
+            color: #4a4238;
+            text-decoration: none;
+        }
+
+        .tool--on {
+            background: rgba(184, 121, 26, .10);
+            border-color: rgba(184, 121, 26, .35);
+            color: #6b4a12;
+        }
+
+        @media (max-width: 767.98px) {
+            .filter-panel {
+                padding: .1rem .7rem;
+            }
+
+            .filter-panel > summary {
+                display: block;
+                padding: .55rem .1rem;
+                font-size: .86rem;
+                font-weight: 600;
+                color: #4a4238;
+                cursor: pointer;
+                list-style: none;
+            }
+
+            .filter-panel > summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .filter-panel > summary::after {
+                content: " ▾";
+                color: #a8a094;
+                font-size: .8em;
+            }
+
+            .filter-panel[open] > summary::after {
+                content: " ▴";
+            }
+
+            .step {
+                grid-template-columns: 1fr;
+                gap: .2rem;
+                padding: .55rem 0;
+            }
+
+            .step-label {
+                padding-top: 0;
+            }
+
+            .filter-chip {
+                min-height: 2.4rem;
+            }
         }
 
         /* One quiet button language on both plugin pages. Tandoor's theme paints

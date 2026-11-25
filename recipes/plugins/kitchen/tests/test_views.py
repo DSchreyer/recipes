@@ -494,3 +494,156 @@ def test_a_saved_cook_is_visible_on_the_cooked_page(kitchen):
     body = client.get(HISTORY, {'geloggt': '1'}).content.decode()
 
     assert 'Gekocht gespeichert.' in body
+
+
+# --- the funnel: shelf -> country -> class -> carb ----------------------------
+
+
+def test_region_row_lists_cookbook_shelves_with_counts(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien'])
+    _kitchen(space, 'Curry', ['Herkunft::Thailand'])
+
+    body = client.get(URL).content.decode()
+
+    assert 'Mittelmeer <span class="filter-chip__n">1</span>' in body
+    assert 'Südostasien <span class="filter-chip__n">1</span>' in body
+    # Countries are the next row, not a wall of 34 chips on the first one.
+    assert 'Italien <span class="filter-chip__n">' not in body
+
+
+def test_country_row_appears_only_inside_a_shelf(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien'])
+
+    assert 'step-label">Land' not in client.get(URL).content.decode()
+
+    shelved = client.get(URL, {'region': 'Mittelmeer'}).content.decode()
+    assert 'step-label">Land' in shelved
+    assert 'Italien <span class="filter-chip__n">1</span>' in shelved
+
+
+def test_region_filters_to_its_countries(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien'])
+    _kitchen(space, 'Curry', ['Herkunft::Thailand'])
+
+    body = client.get(URL, {'region': 'Mittelmeer'}).content.decode()
+
+    assert 'Pasta' in body
+    assert 'Curry' not in body
+
+
+def test_subregion_row_appears_under_a_country(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Toskanische Pasta', ['Herkunft::Italien::Toskana'])
+    _kitchen(space, 'Sizilianische Pasta', ['Herkunft::Italien::Sizilien'])
+
+    body = client.get(URL, {'region': 'Mittelmeer', 'land': 'Italien'}).content.decode()
+    assert 'Toskanische Pasta' in body and 'Sizilianische Pasta' in body
+
+    body = client.get(
+        URL, {'region': 'Mittelmeer', 'land': 'Italien', 'sub': 'Toskana'}
+    ).content.decode()
+    assert 'Toskanische Pasta' in body
+    assert 'Sizilianische Pasta' not in body
+
+
+def test_class_gate_is_a_partition(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Huhn', ['Hauptzutat::Hähnchen'])
+    _kitchen(space, 'Lachs', ['Hauptzutat::Fisch'])
+    _kitchen(space, 'Gemüse', ['Ernaehrung::Vegetarisch'])
+    _kitchen(space, 'Unbekannt', ['Beilage::Reis'])
+
+    body = client.get(URL).content.decode()
+    for label in ('Fleisch', 'Fisch', 'Vegetarisch', 'ohne Angabe'):
+        assert f'{label} <span class="filter-chip__n">1</span>' in body
+
+    for klasse, shown, hidden in (
+        ('fleisch', 'Huhn', 'Lachs'),
+        ('fisch', 'Lachs', 'Huhn'),
+        ('vegetarisch', 'Gemüse', 'Huhn'),
+        ('ohne', 'Unbekannt', 'Gemüse'),
+    ):
+        body = client.get(URL, {'klasse': klasse}).content.decode()
+        assert shown in body, klasse
+        assert hidden not in body, klasse
+
+
+def test_carb_chips_fold_synonyms(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Handgemachte Nudeln', ['Beilage::Nudeln'])
+    _kitchen(space, 'Pasta al Pomodoro', ['Beilage::Pasta'])
+
+    body = client.get(URL, {'carb': 'Pasta'}).content.decode()
+
+    assert 'Pasta <span class="filter-chip__n">2</span>' in body
+    assert 'Handgemachte Nudeln' in body
+    assert 'Pasta al Pomodoro' in body
+
+
+def test_counts_answer_the_other_filters(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta vegetarisch', ['Herkunft::Italien', 'Ernaehrung::Vegetarisch'])
+    _kitchen(space, 'Pasta mit Huhn', ['Herkunft::Italien', 'Hauptzutat::Hähnchen'])
+
+    body = client.get(URL, {'region': 'Mittelmeer', 'klasse': 'vegetarisch'}).content.decode()
+
+    # Italien has two recipes, but one of them is meat: the chip says one.
+    assert 'Italien <span class="filter-chip__n">1</span>' in body
+
+
+def test_a_zero_chip_is_shown_disabled(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien', 'Ernaehrung::Vegetarisch'])
+
+    body = client.get(URL, {'region': 'Mittelmeer', 'klasse': 'vegetarisch'}).content.decode()
+
+    assert 'Portugal <span class="filter-chip__n">0</span>' in body
+    assert 'filter-chip--off' in body
+
+
+def test_protein_row_only_inside_meat_and_fish(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Kartoffelsalat', ['Herkunft::Deutschland', 'Ernaehrung::Vegetarisch'])
+    _kitchen(space, 'Schnitzel', ['Herkunft::Deutschland', 'Hauptzutat::Schwein'])
+
+    veg = client.get(URL, {'region': 'DACH', 'klasse': 'vegetarisch'}).content.decode()
+    assert 'step-label">Hauptzutat' not in veg
+
+    meat = client.get(URL, {'region': 'DACH', 'klasse': 'fleisch'}).content.decode()
+    assert 'step-label">Hauptzutat' in meat
+    assert 'Schwein <span class="filter-chip__n">1</span>' in meat
+
+
+def test_an_applied_filter_can_be_removed_in_one_click(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien', 'Ernaehrung::Vegetarisch'])
+
+    body = client.get(URL, {'region': 'Mittelmeer', 'klasse': 'vegetarisch'}).content.decode()
+
+    assert 'class="applied-chip" href="?klasse=vegetarisch"' in body
+    assert 'alles zurücksetzen' in body
+
+
+def test_an_old_cuisine_bookmark_still_answers(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Pasta', ['Herkunft::Italien'])
+    _kitchen(space, 'Curry', ['Herkunft::Thailand'])
+
+    body = client.get(URL, {'cuisine': 'Herkunft::Italien'}).content.decode()
+
+    assert 'Pasta' in body
+    assert 'Curry' not in body
+
+
+def test_the_header_counts_the_pool_not_the_six_cards(kitchen):
+    client, space = kitchen
+    for index in range(8):
+        _kitchen(space, f'Gericht {index}')
+
+    body = client.get(URL).content.decode()
+
+    assert '8 Rezepte' in body
+    assert 'mehr zeigen' in body

@@ -281,3 +281,52 @@ def test_a_cleared_star_is_not_a_verdict(space):
 
     with scope(space=space):
         assert match.household_ratings()[dish.id] == (5.0, 1)
+
+
+# --- the cookbook tree --------------------------------------------------------
+
+
+def test_herkunft_reads_both_tree_shapes():
+    assert match.herkunft('Herkunft::Mittelmeer::Italien::Toskana') == (
+        'Mittelmeer', 'Italien', 'Toskana')
+    assert match.herkunft('Herkunft::Italien') == ('Mittelmeer', 'Italien', '')
+    assert match.herkunft('Herkunft::Italien::Toskana') == ('Mittelmeer', 'Italien', 'Toskana')
+    assert match.herkunft('Beilage::Reis') is None
+
+
+def test_every_country_belongs_to_exactly_one_shelf():
+    countries = [country for shelf in match.SHELVES.values() for country in shelf]
+    assert len(countries) == len(set(countries)) == len(match.COUNTRY_SHELF)
+    assert set(match.COUNTRY_SHELF.values()) == set(match.SHELVES)
+
+
+def test_class_of_is_a_partition():
+    assert match.class_of(frozenset({'Hauptzutat::Hähnchen'})) == 'fleisch'
+    assert match.class_of(frozenset({'Hauptzutat::Fisch'})) == 'fisch'
+    # A fish tag wins over a stray vegetarian tag, as `Ernaehrung::Fleisch`
+    # includes fish: the gate must never count one recipe twice.
+    assert match.class_of(frozenset({'Hauptzutat::Fisch', 'Hauptzutat::Hähnchen'})) == 'fleisch'
+    assert match.class_of(frozenset({'Ernaehrung::Vegetarisch'})) == 'vegetarisch'
+    assert match.class_of(frozenset({'Ernaehrung::Vegan'})) == 'vegetarisch'
+    assert match.class_of(frozenset({'Beilage::Reis'})) == 'ohne'
+
+
+def test_carb_ohne_also_means_untagged():
+    assert match.matches(frozenset({'Beilage::Reis'}), {'carb': 'ohne'}) is False
+    assert match.matches(frozenset({'Herkunft::Italien'}), {'carb': 'ohne'}) is True
+    assert match.matches(frozenset({'Beilage::Ohne Beilage'}), {'carb': 'ohne'}) is True
+
+
+def test_carb_kind_accepts_raw_keywords():
+    assert match.carb_kind('Beilage::Nudeln') == 'Pasta'
+    assert match.carb_kind('Beilage::Teig') == 'Brot/Teig'
+    assert match.carb_kind('Pasta') == 'Pasta'
+    assert match.carb_kind('Beilage::GibtEsNicht') == 'Beilage::GibtEsNicht'
+
+
+def test_region_matches_every_country_in_the_shelf():
+    names = frozenset({'Herkunft::Spanien'})
+    assert match.matches(names, {'region': 'Mittelmeer'}) is True
+    assert match.matches(names, {'region': 'DACH'}) is False
+    assert match.matches(names, {'region': 'Mittelmeer', 'land': 'Spanien'}) is True
+    assert match.matches(names, {'region': 'Mittelmeer', 'land': 'Italien'}) is False

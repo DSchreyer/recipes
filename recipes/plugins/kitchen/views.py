@@ -24,7 +24,31 @@ from cookbook.models import CookLog, Recipe
 
 from . import match
 
-PARAMS = (*match.AXIS_PREFIX, "foods", "q", "seed", "n", "missing", "minrating")
+PARAMS = (
+    "region", "land", "sub", "klasse", "protein", "carb", "effort",
+    "foods", "q", "seed", "n", "missing", "minrating",
+    # Old bookmarks: `cuisine=Herkunft::Italien`, `diet=Ernaehrung::Vegetarisch`.
+    # Mapped in `current()` and never written back to a new link.
+    "cuisine", "diet",
+)
+
+# The funnel, in the order it is asked: where from, what kind, what with.
+AXES = ("region", "land", "sub", "klasse", "protein", "carb", "effort")
+
+AXIS_LABEL: dict[str, str] = {
+    "region": "Region",
+    "land": "Land",
+    "sub": "Gegend",
+    "klasse": "Klasse",
+    "protein": "Hauptzutat",
+    "carb": "Beilage",
+    "effort": "Aufwand",
+}
+
+# A country only means something inside its shelf; a region only inside its
+# country. Changing a parent clears its children instead of leaving a filter
+# that can match nothing.
+DEPENDENTS: dict[str, tuple[str, ...]] = {"region": ("land", "sub"), "land": ("sub",)}
 
 # Monday to Thursday the picker opens on what has already earned four stars;
 # Friday to Sunday stay as they were, because the weekend is when there is time
@@ -42,7 +66,62 @@ UNRATED = Q(rating__isnull=True) | Q(rating=0)
 
 def current(request) -> dict[str, str]:
     """Only the parameters this page understands, so junk in the URL dies here."""
-    return {key: request.GET[key] for key in PARAMS if request.GET.get(key)}
+    params = {key: request.GET[key] for key in PARAMS if request.GET.get(key)}
+    _legacy(params.pop("cuisine", ""), params)
+    diet = params.pop("diet", "")
+    if diet and not params.get("klasse"):
+        params["klasse"] = (
+            "vegetarisch" if ("Vegetarisch" in diet or "Vegan" in diet)
+            else "fleisch" if "Fleisch" in diet else ""
+        )
+    if params.get("carb"):
+        params["carb"] = match.carb_kind(params["carb"])
+    return params
+
+
+def _legacy(cuisine: str, params: dict[str, str]) -> None:
+    """Old bookmarks carried `cuisine=Herkunft::Italien[,Herkunft::Spanien]`.
+
+    The new funnel is one shelf and one country; the first value wins, the rest
+    would be a different question. A bare shelf name (`Mittelmeer`) is accepted
+    too, because that is what the chips write.
+    """
+    for raw in cuisine.split(","):
+        raw = raw.strip()
+        if not raw or params.get("region"):
+            continue
+        name = raw if raw.startswith("Herkunft::") else f"Herkunft::{raw}"
+        leaf = name.split("::")[-1]
+        if leaf in match.SHELVES:
+            params["region"] = leaf
+            continue
+        parts = match.herkunft(name)
+        if parts and parts[0]:
+            params["region"], params["land"] = parts[0], parts[1]
+            if parts[2]:
+                params["sub"] = parts[2]
+
+
+def axes_of(params: dict[str, str]) -> dict[str, str]:
+    """The active value of every axis, normalized. Unknown values stay: a URL
+    the user typed is a question, and the page answers it with a sentence."""
+    axes = {key: params.get(key, "") for key in AXES}
+    if axes["land"] and not axes["region"]:
+        axes["region"] = match.COUNTRY_SHELF.get(axes["land"], "")
+    return axes
+
+
+def label_for(key: str, value: str) -> str:
+    """The chip language, used by applied filters and by the dead-pair note."""
+    if key == "region":
+        return match.shelf_label(value)
+    if key == "klasse":
+        return match.CLASS_LABELS.get(value, value)
+    if key == "effort":
+        return match.EFFORT_LABELS.get(value, value)
+    if key == "protein":
+        return match.short_label(value)
+    return value
 
 
 def href(params: dict[str, str], **changes: str) -> str:
@@ -97,37 +176,39 @@ def food_href(params: dict[str, str], name: str) -> str:
     return href(params, foods=",".join(match.toggle(values_of(params, "foods"), name)))
 
 
-def drop_narrowest(active: dict[str, list[str]]) -> tuple[str, dict[str, list[str]]]:
+def drop_narrowest(
+    sets: dict[int, frozenset[str]], active: dict[str, str]
+) -> tuple[str, dict[str, str]]:
     """No recipe fits. Remove the axis whose removal opens the most recipes.
 
     Chosen over "drop the last tap" because the URL does not remember tap order,
     and because the axis that opens the most doors is the one narrowing hardest.
     """
-    labels = ", ".join(match.short_label(v) for values in active.values() for v in values)
-    best: tuple[dict[str, list[str]], int, str] | None = None
+    labels = ", ".join(label_for(key, value) for key, value in active.items())
+    best: tuple[dict[str, str], int, str] | None = None
     for key in active:
         trial = {k: v for k, v in active.items() if k != key}
-        count = match.recipes_for(trial).count()
+        count = match.count_matching(sets, trial)
         if count and (best is None or count > best[1]):
             best = (trial, count, key)
     if best is None:
         return f"Nichts passt zu {labels}. Hier ist der ganze Bestand.", {}
     trial, count, key = best
-    return f"Nichts mit {labels}. Ohne {match.AXIS_LABEL[key]}: {count} Treffer.", trial
+    return f"Nichts mit {labels}. Ohne {AXIS_LABEL[key]}: {count} Treffer.", trial
 
 
 def build(request) -> dict:
     params = current(request)
-    axes = {key: values_of(params, key) for key in match.AXIS_PREFIX}
-    foods = values_of(params, "foods")
-    food_set = set(foods)
+    axes = axes_of(params)
+    active = {key: value for key, value in axes.items() if value}
     note = ""
 
-    active = {key: values for key, values in axes.items() if values}
-    qs = match.recipes_for(active)
-    if active and not qs.exists():
-        note, active = drop_narrowest(active)
-        qs = match.recipes_for(active)
+    sets = match.keyword_sets()
+    ids = match.recipe_ids(sets, active)
+    if active and not ids:
+        note, active = drop_narrowest(sets, active)
+        axes = {key: active.get(key, "") for key in AXES}
+        ids = match.recipe_ids(sets, active)
 
     limit = match.MAX_CARDS if params.get("n") == "12" else match.DEFAULT_CARDS
     allow = 2 if params.get("missing") == "2" else 1
@@ -144,9 +225,16 @@ def build(request) -> dict:
     ratings = match.household_ratings()
     notes = match.last_notes()
     cooks = match.cook_counts()
+    foods = values_of(params, "foods")
+    food_set = set(foods)
 
+    qs = (
+        Recipe.objects.filter(pk__in=ids)
+        .prefetch_related("steps__ingredients__food")
+        .order_by("name")
+    )
     candidates = []
-    for recipe in qs.prefetch_related("steps__ingredients__food"):
+    for recipe in qs:
         names = match.food_names(recipe)
         have = tuple(sorted(name for name in names if name in food_set)) if foods else ()
         # A recipe that uses none of what the kitchen has is not an answer to
@@ -193,6 +281,15 @@ def build(request) -> dict:
     if defaulted:
         params["minrating"] = str(WEEKDAY_DEFAULT_MINRATING)
 
+    # What the header promises: every recipe that survives the filters (and
+    # "nur Bewährtes"), before the missing-tier and the six-card limit. A
+    # header count that ignores the tier is honest; one that ignores the
+    # filters is not.
+    total = sum(
+        1 for c in candidates
+        if min_rating is None or (c.rating is not None and c.rating >= min_rating)
+    )
+
     # With no ingredient list there is nothing to be missing, so every recipe
     # qualifies. With one, the tier rule applies -- and if even "short by two"
     # is empty, say so and show the closest anyway rather than an empty page.
@@ -202,26 +299,120 @@ def build(request) -> dict:
         note = "Alles braucht mehr als zwei Extras. Hier die nächsten."
         cards = match.rank(candidates, allow_missing=99, seed=seed, limit=limit, min_rating=min_rating)
 
-    rows = [
-        {
-            "key": key,
-            "label": match.AXIS_LABEL[key],
-            "chips": [
-                {
-                    "label": match.short_label(value),
-                    "href": chip_href(params, key, value),
-                    "active": value in axes[key],
-                }
-                for value in match.axis_values(prefix)
-            ],
+    def chip(axis: str, value: str, label: str, count: int, clear: tuple[str, ...] = ()) -> dict:
+        on = axes.get(axis) == value
+        changes = {axis: "" if on else value}
+        for key in clear:
+            changes[key] = ""
+        return {
+            "label": label,
+            "count": count,
+            "active": on,
+            # Zero is shown, not hidden: a hidden chip is a vanished option, and
+            # the household cannot tell whether it was removed or just empty.
+            "disabled": count == 0 and not on,
+            "href": href(params, **changes),
         }
-        for key, prefix in match.AXIS_PREFIX.items()
+
+    def counted(axis: str, value: str, **extra: str) -> int:
+        return match.count_matching(sets, {**axes, axis: value, **extra})
+
+    # Declaration order, not count order: a shelf that moves under the
+    # cursor when a filter changes is worse than a shelf found by memory.
+    region_chips = [
+        chip("region", shelf, match.shelf_label(shelf),
+             counted("region", shelf, land="", sub=""), clear=("land", "sub"))
+        for shelf in match.SHELVES
     ]
+
+    land_chips: list[dict] = []
+    if axes["region"] in match.SHELVES:
+        all_land = counted("land", "", sub="")
+        land_chips = [{
+            "label": "alle",
+            "count": all_land,
+            "active": not axes["land"],
+            "disabled": False,
+            "href": href(params, land="", sub=""),
+        }]
+        land_chips += [
+            chip("land", country, country, counted("land", country, sub=""), clear=("sub",))
+            for country in match.SHELVES[axes["region"]]
+        ]
+
+    sub_chips: list[dict] = []
+    if axes["land"]:
+        subs = match.subregions(axes["region"], axes["land"])
+        if subs:
+            sub_chips = [{
+                "label": "alle",
+                "count": counted("sub", ""),
+                "active": not axes["sub"],
+                "disabled": False,
+                "href": href(params, sub=""),
+            }]
+            sub_chips += [
+                chip("sub", region, region, counted("sub", region))
+                for region in sorted(subs)
+            ]
+
+    class_chips = [
+        chip("klasse", name, match.CLASS_LABELS[name], counted("klasse", name))
+        for name in match.CLASSES
+    ]
+
+    protein_chips: list[dict] = []
+    if axes["klasse"] in ("fleisch", "fisch"):
+        pool = match.MEAT if axes["klasse"] == "fleisch" else match.FISH
+        protein_chips = [
+            chip("protein", name, match.short_label(name), counted("protein", name))
+            for name in sorted(pool, key=match.short_label)
+        ]
+
+    carb_chips = [
+        chip("carb", kind, kind, counted("carb", kind)) for kind in match.CARB_KINDS
+    ]
+
+    effort_chips = [
+        chip("effort", key, match.EFFORT_LABELS[key], counted("effort", key))
+        for key in match.EFFORT_KINDS
+    ]
+
+    rows = [
+        {"key": "region", "label": "Region", "chips": region_chips, "show": True},
+        {"key": "land", "label": "Land", "chips": land_chips, "show": bool(land_chips)},
+        {"key": "sub", "label": "Gegend", "chips": sub_chips, "show": bool(sub_chips)},
+        {"key": "klasse", "label": "Klasse", "chips": class_chips, "show": True},
+        {"key": "protein", "label": "Hauptzutat", "chips": protein_chips, "show": bool(protein_chips)},
+        {"key": "carb", "label": "Beilage", "chips": carb_chips, "show": True},
+        {"key": "effort", "label": "Aufwand", "chips": effort_chips, "show": True},
+    ]
+
+    applied = []
+    for key in AXES:
+        value = axes.get(key, "")
+        if not value:
+            continue
+        changes = {key: ""}
+        for dependent in DEPENDENTS.get(key, ()):
+            changes[dependent] = ""
+        applied.append({"label": label_for(key, value), "href": href(params, **changes)})
+
+    crumb = None
+    if axes["region"] in match.SHELVES:
+        crumb = {
+            "back": href(params, land="", sub=""),
+            "path": match.shelf_label(axes["region"]),
+            "leaf": axes["land"] or "alle Länder",
+        }
 
     return {
         "params": params,
         "rows": rows,
+        "applied": applied,
+        "crumb": crumb,
         "note": note,
+        "total": total,
         "today": _today().isoformat(),
         "rating_options": rating_options(),
         "cards": cards,
@@ -243,10 +434,10 @@ def build(request) -> dict:
         "proven_active": min_rating is not None,
         "proven_default": defaulted,
         "filters_active": bool(
-            any(values for values in axes.values()) or foods or params.get("q")
+            active or foods or params.get("q")
         ),
         "filter_count": (
-            sum(len(values) for values in axes.values())
+            len(active)
             + len(foods)
             + (1 if params.get("q") else 0)
         ),
