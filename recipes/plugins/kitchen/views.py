@@ -1,9 +1,11 @@
 """The page. All state lives in the query string; every chip is a link.
 
-No JavaScript and no writes: a tap is a page load, and the page can be
-bookmarked or shared because the URL carries the whole question. Read-only is a
-deliberate constraint -- the stale `mealie_*` tools taught that a write which
-lands in the wrong app is a silent lie (docs/tandoor-agent-tools-gap.md).
+No JavaScript for the funnel: a tap is a page load, and the page can be
+bookmarked or shared because the URL carries the whole question. There are
+exactly two writes -- logging a cook here and correcting one entry in
+CookedEntryView -- and both go through the scoped manager, because a write that
+lands in the wrong app or the wrong space is a silent lie
+(docs/tandoor-agent-tools-gap.md).
 """
 
 from __future__ import annotations
@@ -11,13 +13,16 @@ from __future__ import annotations
 import secrets
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
-from django.db.models import Count, Q
+from django.db.models import Avg, Count, Max, Q
+from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views import View
 from django.views.generic import TemplateView
 
 from cookbook.models import CookLog, Recipe
@@ -466,7 +471,7 @@ class PickerView(TemplateView):
         raw = request.POST.get("recipe", "")
         recipe = Recipe.objects.filter(pk=raw).first() if raw.isdigit() else None
         if recipe is None:
-            return redirect(self._back(request))
+            return redirect(_back(request, "kitchen:picker"))
 
         rating = _quarter(request.POST.get("rating", ""))
         comment = (request.POST.get("note") or "").strip() or None
@@ -479,19 +484,35 @@ class PickerView(TemplateView):
             comment=comment,
             created_at=_when(request.POST.get("date")),
         )
-        target = self._back(request)
-        separator = "&" if "?" in target else "?"
-        return redirect(f"{target}{separator}geloggt=1")
+        return _flash(_back(request, "kitchen:picker"), "geloggt")
 
-    @staticmethod
-    def _back(request) -> str:
-        """The query string the card was on, or the bare picker."""
-        target = request.POST.get("next", "")
-        if target.startswith("/") and not target.startswith("//") and url_has_allowed_host_and_scheme(
-            target, allowed_hosts={request.get_host()}, require_https=request.is_secure()
-        ):
-            return target
-        return reverse("kitchen:picker")
+
+FLASH = ("geloggt", "gespeichert", "geloescht")
+
+
+def _flash(target: str, key: str, anchor: str = ""):
+    """Back to the page the form was on, with one word of confirmation.
+
+    Earlier confirmations are dropped first: a page that has just deleted an
+    entry must not still be saying that it changed one. `anchor` scrolls the
+    browser to the row that changed, so the confirmation is the corrected
+    value itself rather than a green bar somewhere above it.
+    """
+    base, _, query = target.partition("?")
+    params = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k not in FLASH]
+    params.append((key, "1"))
+    url = f"{base}?{urlencode(params)}"
+    return redirect(f"{url}#{anchor}" if anchor else url)
+
+
+def _back(request, fallback: str) -> str:
+    """The query string the form was on, or the page named by `fallback`."""
+    target = request.POST.get("next", "")
+    if target.startswith("/") and not target.startswith("//") and url_has_allowed_host_and_scheme(
+        target, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return target
+    return reverse(fallback)
 
 
 def _quarter(raw: str) -> Decimal | None:
@@ -505,15 +526,24 @@ def _quarter(raw: str) -> Decimal | None:
     return value
 
 
-def _when(raw: str | None) -> datetime:
-    """A date input means "we ate at lunchtime", not "at 00:00"."""
+def _day(raw: str | None) -> date | None:
+    """A `date` input as a day, or None when it is empty or nonsense."""
     try:
-        day: date = date.fromisoformat(raw or "")
+        return date.fromisoformat((raw or "").strip())
     except ValueError:
-        return timezone.now()
+        return None
+
+
+def _at_noon(day: date) -> datetime:
+    """A date input means "we ate at lunchtime", not "at 00:00"."""
     return timezone.make_aware(
         datetime.combine(day, time(12, 0)), timezone.get_current_timezone()
     )
+
+
+def _when(raw: str | None) -> datetime:
+    day = _day(raw)
+    return _at_noon(day) if day else timezone.now()
 
 
 MONTHS = (
@@ -539,21 +569,28 @@ def rating_options() -> list[dict[str, str]]:
     ]
 
 
-def _nudge() -> dict:
+def _nudge(by: str = "") -> dict:
     """Cooks that never got a star, and the dishes that keep coming back.
 
-    Scoped to the space like every other read here, and deliberately not
-    filtered by person: it is a statement about the library, not about who is
-    looking. A recipe only counts as "nie bewertet" when *no* cook of it was
-    ever rated -- one star anywhere means somebody has an opinion already.
+    Scoped to the space like every other read here, and to the person when the
+    page is filtered: two numbers that sit next to each other have to count the
+    same rows, or neither can be trusted. A recipe only counts as "nie
+    bewertet" when *no* cook of it was ever rated -- one star anywhere means
+    somebody has an opinion already.
+
+    `last` is the newest unrated cook of that recipe: the nudge rates *that*
+    entry through CookedEntryView instead of inventing a new cook, which is how
+    the same dish used to be counted twice.
     """
     logs = CookLog.objects.all()
+    if by:
+        logs = logs.filter(created_by__username=by)
     rated = CookLog.objects.filter(rating__gt=0).values("recipe")
     rows = (
         logs.filter(UNRATED)
         .exclude(recipe__in=rated)
         .values("recipe", "recipe__name")
-        .annotate(cooks=Count("pk"))
+        .annotate(cooks=Count("pk"), last=Max("pk"))
         .filter(cooks__gte=2)
         .order_by("-cooks", "recipe__name")[:5]
     )
@@ -564,32 +601,128 @@ def _nudge() -> dict:
     }
 
 
+# The three chips a cook row shows. Region is deliberately absent: a row answers
+# "what was on the plate", not "which book was it from".
+AXIS_NAMES = ("Herkunft", "Beilage", "Aufwand")
+
+
+def _axes(recipe) -> list[str]:
+    """The three chips a cook row shows: where from, what with, how much work.
+
+    The keyword tree is flat, so one recipe may carry `Herkunft::Mittelmeer`,
+    `Herkunft::Mittelmeer::Italien` and `...::Latium` at once. The deepest path
+    says the most, and on a row the country is the part a cook recognises --
+    "Italien", not the shelf it hangs under.
+    """
+    deepest: dict[str, str] = {}
+    for keyword in recipe.keywords.all():
+        axis, _, rest = keyword.name.partition("::")
+        if axis not in AXIS_NAMES or not rest:
+            continue
+        if axis not in deepest or rest.count("::") > deepest[axis].count("::"):
+            deepest[axis] = rest
+
+    def label(axis: str, rest: str) -> str:
+        parts = rest.split("::")
+        # `Shelf::Country::Region` -> the country; a bare `Country` stays as is.
+        value = parts[1] if axis == "Herkunft" and parts[0] in match.SHELVES and len(parts) > 1 else parts[0]
+        # The library stores `Aufwand::normal` lower case; on a row of chips that
+        # starts with "Schnell" and "Wochenende" the label still reads capitalised.
+        return value[:1].upper() + value[1:]
+
+    return [label(axis, deepest[axis]) for axis in AXIS_NAMES if axis in deepest]
+
+
 class CookedView(TemplateView):
     """What we cooked, newest first, grouped by month.
 
     This is the answer to "wann haben wir das gekocht" -- the recipe page only
-    knows the last time. Read-only; logging happens on the picker or the recipe
-    page.
+    knows the last time. A row shows the dish itself: its photo, the axis
+    chips, who cooked it and how it was. Correcting an entry happens here too,
+    through CookedEntryView.
     """
 
     template_name = "kitchen/cooked.html"
-    page_size = 200
+    page_size = 50
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         by = self.request.GET.get("by", "")
+        query = self.request.GET.get("q", "").strip()
 
-        logs = CookLog.objects.select_related("recipe", "created_by").order_by("-created_at")
+        logs = (
+            CookLog.objects.select_related("recipe", "created_by")
+            .prefetch_related("recipe__keywords")
+            # pk breaks the tie: two cooks entered in the same minute must not
+            # change places between the first page and the second.
+            .order_by("-created_at", "-pk")
+        )
         if by:
             logs = logs.filter(created_by__username=by)
+        if query:
+            logs = logs.filter(recipe__name__icontains=query)
+
+        # The header describes the whole filtered history, so it is counted
+        # before the cursor: paging back must not change the size of the thing
+        # being paged.
+        totals = logs.aggregate(
+            entries=Count("pk"), average=Avg("rating"), last=Max("created_at")
+        )
+        summary = {
+            "entries": totals["entries"] or 0,
+            "average": (
+                _german_number(float(totals["average"]))
+                if totals["average"] is not None
+                else ""
+            ),
+            "rated": logs.filter(rating__gt=0).count(),
+            "last": totals["last"],
+        }
+
+        # A cursor, not a page number: new cooks arrive at the top while you
+        # read, and `?page=2` would slide under the reader. One extra row tells
+        # us whether an older page exists, without counting twice.
+        before = parse_datetime(self.request.GET.get("before", ""))
+        before_pk = self.request.GET.get("before_pk", "")
+        older = logs
+        if before is not None and before_pk.isdigit():
+            # The cursor is a position in a total order, not a timestamp: two
+            # cooks entered in the same minute are still two different rows.
+            older = older.filter(
+                Q(created_at__lt=before) | Q(created_at=before, pk__lt=int(before_pk))
+            )
+        elif before is not None:
+            older = older.filter(created_at__lt=before)
+        rows = list(older[: self.page_size + 1])
+        more = len(rows) > self.page_size
+        rows = rows[: self.page_size]
 
         months: list[dict] = []
-        for log in logs[: self.page_size]:
+        for log in rows:
             label = _month_label(timezone.localtime(log.created_at))
             if not months or months[-1]["label"] != label:
-                months.append({"label": label, "logs": []})
+                months.append({"label": label, "logs": [], "ratings": []})
             log.rating_number = _german_number(float(log.rating)) if log.rating else ""
+            log.image_url = log.recipe.image.url if log.recipe.image else ""
+            # `get_user_display_name` returns "Daniel " -- the f-string's space.
+            log.person_name = log.created_by.get_user_display_name().strip()
+            log.axes = _axes(log.recipe)
             months[-1]["logs"].append(log)
+            if log.rating:
+                months[-1]["ratings"].append(float(log.rating))
+
+        # A month header is a claim about that month, so it counts and averages
+        # what the page is actually showing.
+        for month in months:
+            month["count"] = len(month["logs"])
+            month["average"] = (
+                _german_number(sum(month["ratings"]) / len(month["ratings"]))
+                if month["ratings"]
+                else ""
+            )
+
+        next_before = rows[-1].created_at.isoformat() if more and rows else ""
+        next_before_pk = rows[-1].pk if more and rows else ""
 
         people = [
             {"username": username, "name": f"{first} {last}".strip() or username}
@@ -602,25 +735,81 @@ class CookedView(TemplateView):
             )
         ]
 
-        entries = sum(len(month["logs"]) for month in months)
-        rated = [float(log.rating) for month in months for log in month["logs"] if log.rating]
-        summary = {
-            "entries": entries,
-            "average": _german_number(sum(rated) / len(rated)) if rated else "",
-            "rated": len(rated),
-        }
+        shown = sum(month["count"] for month in months)
         context.update(
             months=months,
             people=people,
             by=by,
+            q=query,
             summary=summary,
-            nudge=_nudge(),
+            shown=shown,
+            more=more,
+            paged=before is not None,
+            next_before=next_before,
+            next_before_pk=next_before_pk,
+            nudge=_nudge(by),
             rating_options=rating_options(),
-            # The nudge form posts to PickerView and comes back here; without
-            # this the save would be invisible on the page it returns to.
+            # Three words of confirmation, one per write, so a change is never
+            # silent on the page it returns to.
             saved=bool(self.request.GET.get("geloggt")),
+            updated=bool(self.request.GET.get("gespeichert")),
+            removed=bool(self.request.GET.get("geloescht")),
         )
         return context
 
 
-__all__ = ["CookedView", "PickerView", "build", "chip_href", "current", "drop_narrowest", "href"]
+class CookedEntryView(View):
+    """Change or remove one entry of the cook history.
+
+    The household decided that anyone may correct an entry: a cook log is a
+    shared memory, not a personal diary, and a wrong star is worse than a
+    borrowed one. Reads go through the scoped manager, so an entry from another
+    space answers 404 and writes nothing.
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request, pk, *args, **kwargs):
+        log = CookLog.objects.filter(pk=pk).first()
+        if log is None:
+            raise Http404("Eintrag nicht gefunden")
+        target = _back(request, "kitchen:cooked")
+        action = request.POST.get("action", "save")
+
+        if action == "delete":
+            log.delete()
+            return _flash(target, "geloescht")
+        if action == "cook":
+            # "Nochmal gekocht" has its own form and always means today: it must
+            # never pick up a date or a note typed into the form above it.
+            again = CookLog.objects.create(
+                recipe=log.recipe,
+                created_by=request.user,
+                space=log.recipe.space,
+            )
+            return _flash(target, "geloggt", f"cook-{again.pk}")
+
+        # Only the fields the form carried change: a rating from the nudge must
+        # not wipe the note that is already there.
+        changed = []
+        if "rating" in request.POST:
+            log.rating = _quarter(request.POST["rating"])
+            changed.append("rating")
+        if "note" in request.POST:
+            log.comment = (request.POST["note"] or "").strip() or None
+            changed.append("comment")
+        day = _day(request.POST.get("date"))
+        if day is not None:
+            log.created_at = _at_noon(day)
+            changed.append("created_at")
+        if changed:
+            log.save(update_fields=changed)
+        # Land on the row that changed, not at the top of the page: the point of
+        # a correction is seeing the corrected value in place.
+        return _flash(target, "gespeichert", f"cook-{log.pk}")
+
+
+__all__ = [
+    "CookedEntryView", "CookedView", "PickerView", "build", "chip_href", "current",
+    "drop_narrowest", "href",
+]

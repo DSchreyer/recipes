@@ -210,9 +210,9 @@
         </div>
     </div>
 
-    {# Progressive enhancement: a chip swaps the three state blocks and the URL.
+    {% comment %} Progressive enhancement: a chip swaps the three state blocks and the URL.
        No JavaScript, a tap is still a page load and the URL still carries the
-       whole question. #}
+       whole question. {% endcomment %}
     <script>
         (function () {
             var BLOCKS = ['notice', 'applied', 'filters', 'results'];

@@ -21,6 +21,46 @@ Neither write path in Tandoor was changed. The signal is connected in
 `KitchenConfig.ready()` and covers the picker and upstream's Vue cook-log
 dialog alike.
 
+## Routes
+
+| Path | Method | What |
+|---|---|---|
+| `/api/plugins/kitchen/` | GET | the picker funnel |
+| `/api/plugins/kitchen/` | POST | log one cook (`recipe`, `rating`, `note`, `date`, `next`) |
+| `/api/plugins/kitchen/gekocht/` | GET | the cook history, newest first, grouped by month; `?by=` person, `?q=` dish name, `?before=&before_pk=` older page |
+| `/api/plugins/kitchen/gekocht/<pk>/` | POST | correct one entry: `action=save\|delete\|cook` |
+
+`CookedEntryView` is the second and last write. Any household member may correct
+an entry (a cook log is a shared memory, not a diary); reads go through the
+scoped manager, so another space's entry is a 404 and writes nothing.
+`action=cook` logs a fresh cook of the same recipe today, `action=delete`
+removes the entry, and `save` only touches the fields the form carried — that is
+what lets the "nie bewertet" nudge send a rating without wiping the note or the
+day.
+
+`cook` lives in its own form on purpose. Inside the edit form the button
+submitted whatever date and note had been typed, and the branch ignores both:
+the entry landed today, unrated, and the input was gone. As a separate form it
+can only mean "log this dish again, today".
+
+`save` and `cook` redirect with `#cook-<pk>`, so the browser lands on the row
+that changed.
+
+The header counts the whole filtered history with an aggregate while the list
+renders `page_size` (50) rows. Older rows are one cursor away rather than a page
+number: `?before=<iso timestamp>&before_pk=<pk>` walks back through a total
+order of `(-created_at, -pk)`. The tie-break is not decoration — two cooks
+entered in the same minute have no order under `-created_at` alone, and the
+database may swap them between one page and the next, so a row would be skipped.
+`?q=` filters on the dish name and composes with `?by=` and the cursor, so the
+header, the nudge and the list always describe the same set.
+
+The rating on an entry is twenty radios over the clipped star row the chips use
+(a quarter of a glyph each) plus an `ohne` pill for clearing it. The fill is CSS
+keyed on `input[value="x"]:checked`, so no JavaScript is involved; the row must
+size itself from the glyphs (`width: max-content`), otherwise the percentage is
+taken against a box the stars overflow and the fill lags behind the rating.
+
 ## The contract
 
 **Environment.**

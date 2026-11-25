@@ -399,6 +399,23 @@
             border-color: #a66c16;
         }
 
+        /* The nudge: unrated cooks worth a star. Only rendered when there is
+           something to rate, so it never reports a zero. */
+        .nudge {
+            margin-bottom: .8rem;
+            padding: .5rem .8rem;
+            border-left: 3px solid rgba(184, 121, 26, .45);
+            border-radius: 0 .4rem .4rem 0;
+            background: rgba(184, 121, 26, .06);
+            font-size: .85rem;
+        }
+
+        .nudge-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
         /* A note from the last cook, set like a quotation. */
         .cook-note {
             margin: .4rem 0 0;
@@ -410,15 +427,57 @@
             line-height: 1.4;
         }
 
-        /* One row of the cooked history. */
-        .cooked-row {
-            display: block;
-            padding: .7rem .9rem;
+        /* A month of the cook history: its name, then how many and how good. */
+        .month-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: .5rem;
+            margin: 1.1rem 0 .55rem;
+            padding-bottom: .3rem;
+            border-bottom: 1px solid #f0e9dd;
+            font-size: .76rem;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #7a7166;
+        }
+
+        .month-head__meta {
+            font-weight: 400;
+            letter-spacing: 0;
+            text-transform: none;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .cook-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        /* One cook. The photo says which dish, the text says when and how it was.
+           72 px is the smallest square that still shows what is on the plate. */
+        .cook-row {
+            display: grid;
+            grid-template-columns: 72px 1fr;
+            gap: .85rem;
+            padding: .7rem .8rem;
             border: 1px solid #e9e0d3;
             border-radius: .55rem;
             background: #fffdfa;
-            color: inherit;
             transition: border-color .15s ease, box-shadow .15s ease;
+        }
+
+        .cook-row + .cook-row {
+            margin-top: .5rem;
+        }
+
+        /* Without a photo the row is one column: an empty 72 px square reads as
+           a broken image and costs a fifth of the width on a phone. */
+        .cook-row--text {
+            grid-template-columns: 1fr;
         }
 
         /* Page furniture shared by both plugin pages. */
@@ -428,7 +487,7 @@
             align-items: flex-end;
             justify-content: space-between;
             gap: .75rem;
-            margin-bottom: 1rem;
+            margin-bottom: .6rem;
         }
 
         .page-head__sub {
@@ -436,13 +495,19 @@
             font-size: .88rem;
         }
 
+        /* The same three numbers the rows already carry, kept as one quiet
+           line: a bordered box here outranked the history it introduced. */
         .page-head__stats {
             display: flex;
-            gap: 1.1rem;
-            padding: .45rem .8rem;
-            border: 1px solid #e9e0d3;
-            border-radius: .55rem;
-            background: #fffdfa;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: .45rem;
+        }
+
+        .page-head__stats .stat + .stat::before {
+            content: "·";
+            margin-right: .45rem;
+            color: #c9b392;
         }
 
         .page-head__stats .stat {
@@ -455,6 +520,39 @@
             color: #4a4238;
             font-size: .95rem;
             font-variant-numeric: tabular-nums;
+        }
+
+        /* Search on the left, the person filter on the right. */
+        .cook-tools {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: .5rem;
+            margin-bottom: .9rem;
+        }
+
+        .cook-search {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+        }
+
+        .cook-search input {
+            width: 15rem;
+            max-width: 100%;
+        }
+
+        .cook-search__clear {
+            color: #7a7166;
+            font-size: 1rem;
+            line-height: 1;
+            text-decoration: none;
+        }
+
+        .cook-search__clear:hover {
+            color: #b8791a;
+            text-decoration: none;
         }
 
         .people-tabs {
@@ -545,35 +643,313 @@
             color: #6b4a12;
         }
 
-        .cooked-row:hover {
+        .cook-row:hover {
             border-color: #d9c9b0;
             box-shadow: 0 2px 10px rgba(107, 74, 18, .07);
+        }
+
+        .cook-row__photo {
+            display: block;
+            width: 72px;
+            height: 72px;
+            border-radius: .45rem;
+            overflow: hidden;
+            background: #f3ede3;
             text-decoration: none;
-            color: inherit;
         }
 
-        .cooked-row__name {
+        .cook-row__photo img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .cook-row__body {
+            min-width: 0;
+        }
+
+        .cook-row__top {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: .6rem;
+        }
+
+        .cook-row__name {
             font-weight: 600;
-            font-size: 1.02rem;
+            font-size: 1rem;
+            line-height: 1.3;
+            color: #4a4238;
+            text-decoration: none;
         }
 
-        .cooked-row__date {
-            color: #9a9186;
+        .cook-row__name:hover {
+            color: #b8791a;
+            text-decoration: none;
+        }
+
+        .cook-row__date {
+            color: #6f665b;
             font-size: .78rem;
             white-space: nowrap;
+            font-variant-numeric: tabular-nums;
         }
 
-        .cooked-row__person {
+        .cook-row__meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: .35rem;
+            margin-top: .2rem;
+        }
+
+        .cook-row__person {
             color: #7a7166;
             font-size: .82rem;
         }
 
+        /* The three axes, as the picker's chips but quieter: this is a memory,
+           not a filter, so nothing here is clickable. */
+        .axis-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: .04rem .45rem;
+            border: 1px solid #ece2d3;
+            border-radius: 999px;
+            color: #6f665b;
+            font-size: .72rem;
+            white-space: nowrap;
+        }
+
+        /* The edit form, folded under the row and spanning the whole card, so
+           it does not start 72 px in on a phone. */
+        .cook-row__edit {
+            grid-column: 1 / -1;
+            margin-top: .3rem;
+        }
+
+        .cook-edit__row {
+            display: grid;
+            grid-template-columns: 9.5rem 10rem;
+            justify-content: start;
+            gap: .4rem;
+            margin-top: .35rem;
+        }
+
+        /* Quarter stars as 20 radios over the same fill technique the chips use:
+           a quarter of a glyph is not readable, so the number sits beside it. */
+        .star-input {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            min-height: 2.4rem;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+
+        .star-input:focus-within {
+            outline: 2px solid rgba(184, 121, 26, .35);
+            outline-offset: 2px;
+            border-radius: .3rem;
+        }
+
+        .star-input__radio {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .star-input__zone {
+            position: relative;
+            display: inline-block;
+            height: 1.5rem;
+        }
+
+        .star-input__stars,
+        .star-input__fill-inner {
+            display: block;
+            width: max-content;
+            height: 1.5rem;
+            font-size: 1.45rem;
+            line-height: 1.5rem;
+            white-space: nowrap;
+        }
+
+        .star-input__stars {
+            color: #d8cdbb;
+        }
+
+        .star-input__fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 0;
+            overflow: hidden;
+            color: #b8791a;
+        }
+
+        .star-input__hits {
+            position: absolute;
+            inset: -.4rem 0;
+            display: flex;
+        }
+
+        .star-input__hit {
+            flex: 1 1 0;
+            min-width: 0;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .star-input__hit:hover {
+            background: rgba(184, 121, 26, .07);
+        }
+
+        .star-input__none {
+            margin: 0;
+            padding: .1rem .5rem;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
+            color: #7a7166;
+            font-size: .72rem;
+            cursor: pointer;
+        }
+
+        .star-input__none:hover {
+            border-color: #c9b392;
+            color: #4a4238;
+        }
+
+        .star-input__radio[value=""]:checked ~ .star-input__none {
+            border-color: #b8791a;
+            color: #b8791a;
+        }
+
+        .star-input__radio[value="0.25"]:checked ~ .star-input__zone .star-input__fill { width: 5%; }
+        .star-input__radio[value="0.50"]:checked ~ .star-input__zone .star-input__fill { width: 10%; }
+        .star-input__radio[value="0.75"]:checked ~ .star-input__zone .star-input__fill { width: 15%; }
+        .star-input__radio[value="1.00"]:checked ~ .star-input__zone .star-input__fill { width: 20%; }
+        .star-input__radio[value="1.25"]:checked ~ .star-input__zone .star-input__fill { width: 25%; }
+        .star-input__radio[value="1.50"]:checked ~ .star-input__zone .star-input__fill { width: 30%; }
+        .star-input__radio[value="1.75"]:checked ~ .star-input__zone .star-input__fill { width: 35%; }
+        .star-input__radio[value="2.00"]:checked ~ .star-input__zone .star-input__fill { width: 40%; }
+        .star-input__radio[value="2.25"]:checked ~ .star-input__zone .star-input__fill { width: 45%; }
+        .star-input__radio[value="2.50"]:checked ~ .star-input__zone .star-input__fill { width: 50%; }
+        .star-input__radio[value="2.75"]:checked ~ .star-input__zone .star-input__fill { width: 55%; }
+        .star-input__radio[value="3.00"]:checked ~ .star-input__zone .star-input__fill { width: 60%; }
+        .star-input__radio[value="3.25"]:checked ~ .star-input__zone .star-input__fill { width: 65%; }
+        .star-input__radio[value="3.50"]:checked ~ .star-input__zone .star-input__fill { width: 70%; }
+        .star-input__radio[value="3.75"]:checked ~ .star-input__zone .star-input__fill { width: 75%; }
+        .star-input__radio[value="4.00"]:checked ~ .star-input__zone .star-input__fill { width: 80%; }
+        .star-input__radio[value="4.25"]:checked ~ .star-input__zone .star-input__fill { width: 85%; }
+        .star-input__radio[value="4.50"]:checked ~ .star-input__zone .star-input__fill { width: 90%; }
+        .star-input__radio[value="4.75"]:checked ~ .star-input__zone .star-input__fill { width: 95%; }
+        .star-input__radio[value="5.00"]:checked ~ .star-input__zone .star-input__fill { width: 100%; }
+
+        .cook-edit__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .35rem;
+            margin-top: .45rem;
+        }
+
+        .cook-edit__actions .btn {
+            border-radius: 999px;
+            font-size: .78rem;
+        }
+
+        .cook-edit__delete {
+            margin-left: auto;
+            color: #a13f2a;
+            border-color: rgba(176, 68, 45, .3);
+        }
+
+        .cook-edit__delete:hover,
+        .cook-edit__delete:focus {
+            background: rgba(176, 68, 45, .08);
+            border-color: rgba(176, 68, 45, .45);
+            color: #8c3521;
+        }
+
+        /* Logging the dish again is a separate intent from editing the entry,
+           so it is a separate form and gets its own line. */
+        .cook-edit__again {
+            margin-top: .35rem;
+        }
+
+        /* Same pill as its neighbours: it is one of the three actions. */
+        .cook-edit__again .btn {
+            border-radius: 999px;
+            font-size: .78rem;
+        }
+
+        .cook-empty {
+            padding: 1rem 1.1rem;
+            border: 1px dashed #e0d5c4;
+            border-radius: .55rem;
+            background: #fffdfa;
+        }
+
+        @media (max-width: 767.98px) {
+            /* On a phone the row is a card: the photo shrinks and the edit form
+               stacks instead of sitting in two columns. */
+            .cook-row {
+                grid-template-columns: 56px 1fr;
+                gap: .65rem;
+                padding: .65rem .7rem;
+            }
+
+            .cook-row__photo {
+                width: 56px;
+                height: 56px;
+            }
+
+            .cook-edit__row {
+                grid-template-columns: 1fr;
+            }
+
+            .cook-search input {
+                width: 100%;
+            }
+
+            .cook-row--text {
+                grid-template-columns: 1fr;
+            }
+
+            /* Three buttons on one line: the destructive one keeps the right
+               edge but must not become the widest target in the form. */
+            .cook-edit__actions .btn {
+                flex: 0 0 auto;
+            }
+
+            .cook-edit__delete {
+                margin-left: auto;
+            }
+        }
+
         /* The card's own disclosure: closed by default, so the card stays quiet. */
+        /* The only route to the page's core task, so it is a real target: a
+           hairline pill the size of the filter chips it sits among. */
         .cook-details summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 2rem;
+            padding: 0 .6rem;
+            border: 1px solid #e0d5c4;
+            border-radius: 999px;
             list-style: none;
             cursor: pointer;
-            color: #8a8175;
-            font-size: .78rem;
+            color: #6f665b;
+            font-size: .8rem;
+        }
+
+        .cook-details summary:hover {
+            border-color: #c9b392;
+            color: #4a4238;
         }
 
         .cook-details summary::-webkit-details-marker {

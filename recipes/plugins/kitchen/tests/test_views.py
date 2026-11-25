@@ -442,8 +442,10 @@ def test_cooked_page_names_the_unrated_cooks(kitchen):
     assert 'ohne Bewertung' in body
     nudge = body.split('nudge-list', 1)[1].split('</ul>', 1)[0]
     assert 'Linseneintopf' in nudge
-    assert f'name="recipe" value="{dish.id}"' in nudge
-    assert 'action="/api/plugins/kitchen/"' in nudge
+    with scopes_disabled():
+        newest = CookLog.objects.filter(recipe=dish).order_by('-pk').first()
+    # The form addresses the cook that happened, not the recipe.
+    assert f'action="/api/plugins/kitchen/gekocht/{newest.pk}/"' in nudge
     assert 'name="rating"' in nudge
 
 
@@ -461,17 +463,21 @@ def test_the_nudge_leaves_out_a_recipe_that_was_ever_rated(kitchen):
     assert 'Risotto' not in nudge
 
 
-def test_the_nudge_form_returns_to_the_cooked_page(kitchen):
+def test_the_nudge_rates_the_cook_that_happened(kitchen):
+    """Rating from the nudge used to post to the picker and invent a second cook."""
     client, space = kitchen
     dish = _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+    with scopes_disabled():
+        newest = CookLog.objects.filter(recipe=dish).order_by('-pk').first()
 
-    response = client.post(URL, {'recipe': dish.id, 'rating': '4.25',
-                                 'next': '/api/plugins/kitchen/gekocht/'})
+    response = client.post(reverse('kitchen:cooked_entry', args=[newest.pk]),
+                           {'action': 'save', 'rating': '4.25', 'next': HISTORY})
 
     assert response.status_code == 302
-    assert response['Location'].endswith('/api/plugins/kitchen/gekocht/?geloggt=1')
+    assert response['Location'].endswith(f'/api/plugins/kitchen/gekocht/?gespeichert=1#cook-{newest.pk}')
     with scopes_disabled():
-        assert float(CookLog.objects.filter(rating__gt=0).get().rating) == 4.25
+        assert CookLog.objects.filter(recipe=dish).count() == 2
+        assert float(CookLog.objects.get(pk=newest.pk).rating) == 4.25
 
 
 def test_card_badge_marks_a_twice_cooked_never_rated_recipe(kitchen):
@@ -647,3 +653,367 @@ def test_the_header_counts_the_pool_not_the_six_cards(kitchen):
 
     assert '8 Rezepte' in body
     assert 'mehr zeigen' in body
+
+
+# --- correcting an entry ------------------------------------------------------
+
+
+def _one_cook(space, recipe, rating=None, comment=None, when=None):
+    with scopes_disabled():
+        user = UserFactory.create(first_name='Daniel', last_name='')
+        UserSpace.objects.create(user=user, space=space, active=True)
+        fields = {'created_at': when} if when else {}
+        return CookLogFactory.create(
+            recipe=recipe, created_by=user, rating=rating, comment=comment,
+            space=space, **fields,
+        )
+
+
+def test_a_cook_can_be_rated_renoted_and_redated(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+
+    response = client.post(
+        reverse('kitchen:cooked_entry', args=[log.pk]),
+        {'action': 'save', 'rating': '4.25', 'note': 'mehr Muskat',
+         'date': '2026-10-03', 'next': HISTORY},
+    )
+
+    assert response.status_code == 302
+    assert response['Location'].endswith(f'/gekocht/?gespeichert=1#cook-{log.pk}')
+    with scopes_disabled():
+        log.refresh_from_db()
+    assert float(log.rating) == 4.25
+    assert log.comment == 'mehr Muskat'
+    assert log.created_at.date().isoformat() == '2026-10-03'
+
+
+def test_a_correction_leaves_what_the_form_did_not_carry(kitchen):
+    """The nudge sends a rating only; the note and the day must survive it."""
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Linseneintopf'), comment='zu salzig')
+    with scopes_disabled():
+        before = CookLog.objects.get(pk=log.pk).created_at
+
+    client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                {'action': 'save', 'rating': '3'})
+
+    with scopes_disabled():
+        log.refresh_from_db()
+    assert float(log.rating) == 3
+    assert log.comment == 'zu salzig'
+    assert log.created_at == before
+
+
+def test_a_rating_off_the_quarter_step_clears_instead_of_rounding(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                {'action': 'save', 'rating': '4.1'})
+
+    with scopes_disabled():
+        log.refresh_from_db()
+    assert log.rating is None
+
+
+def test_a_cook_can_be_deleted(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    response = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                           {'action': 'delete', 'next': HISTORY})
+
+    assert response['Location'].endswith('/gekocht/?geloescht=1')
+    with scopes_disabled():
+        assert CookLog.objects.count() == 0
+
+
+def test_another_spaces_cook_cannot_be_touched(kitchen):
+    client, space = kitchen
+    with scopes_disabled():
+        other = SpaceFactory.create(name='Other')
+        foreign = CookLogFactory.create(
+            recipe=RecipeFactory.create(space=other, name='Fremd', steps__count=0),
+            created_by=UserFactory.create(), rating=5, space=other,
+        )
+
+    response = client.post(reverse('kitchen:cooked_entry', args=[foreign.pk]),
+                           {'action': 'delete'})
+
+    assert response.status_code == 404
+    with scopes_disabled():
+        assert CookLog.objects.filter(pk=foreign.pk).count() == 1
+
+
+def test_cooking_it_again_adds_a_fresh_entry(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    log = _one_cook(space, dish, rating=5)
+
+    client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                {'action': 'cook', 'next': HISTORY})
+
+    with scopes_disabled():
+        logs = CookLog.objects.filter(recipe=dish)
+    assert logs.count() == 2
+    assert logs.filter(rating__isnull=True).count() == 1
+
+
+# --- what a row shows ---------------------------------------------------------
+
+
+def test_a_row_shows_the_dish_its_photo_and_its_axes(kitchen):
+    client, space = kitchen
+    dish = _kitchen(
+        space, 'Toskanische Pasta',
+        ['Herkunft::Mittelmeer', 'Herkunft::Mittelmeer::Italien',
+         'Herkunft::Mittelmeer::Italien::Toskana', 'Beilage::Pasta', 'Aufwand::Schnell'],
+    )
+    with scopes_disabled():
+        dish.image = 'recipes/toskanische-pasta.jpg'
+        dish.save(update_fields=['image'])
+    _one_cook(space, dish, rating='4.25', comment='mehr Salz')
+
+    body = client.get(HISTORY).content.decode()
+
+    assert 'recipes/toskanische-pasta.jpg' in body
+    assert 'class="axis-chip">Italien<' in body
+    assert 'class="axis-chip">Pasta<' in body
+    assert 'class="axis-chip">Schnell<' in body
+    assert '>Toskana<' not in body
+    assert '>Mittelmeer<' not in body
+    assert '4,25' in body
+
+
+def test_a_cook_without_a_photo_drops_the_column(kitchen):
+    """An empty 72 px square reads as a broken image; the row goes full width."""
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+
+    body = client.get(HISTORY).content.decode()
+
+    assert 'cook-row--text' in body
+    assert 'class="cook-row__photo' not in body
+
+
+def test_a_month_header_counts_and_averages(kitchen):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    november = timezone.now().replace(year=2026, month=11, day=3)
+    _one_cook(space, dish, rating=5, when=november)
+    _one_cook(space, dish, rating=4, when=november.replace(day=9))
+
+    body = client.get(HISTORY).content.decode()
+
+    assert 'November 2026' in body
+    assert '2× · ⌀ 4,5' in body
+
+
+def test_every_row_carries_its_own_edit_form(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    body = client.get(HISTORY).content.decode()
+
+    assert f'action="/api/plugins/kitchen/gekocht/{log.pk}/"' in body
+    assert 'name="action" value="cook"' in body
+    assert 'name="action" value="delete"' in body
+
+
+def test_the_three_confirmations_are_visible(kitchen):
+    client, space = kitchen
+
+    for key, text in (
+        ('geloggt', 'Gekocht gespeichert.'),
+        ('gespeichert', 'Eintrag geändert.'),
+        ('geloescht', 'Eintrag gelöscht.'),
+    ):
+        assert text in client.get(HISTORY, {key: '1'}).content.decode()
+
+
+def test_a_new_confirmation_replaces_the_old_one(kitchen):
+    """The page must not say "changed" while it is reporting a delete."""
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    response = client.post(
+        reverse('kitchen:cooked_entry', args=[log.pk]),
+        {'action': 'delete', 'next': HISTORY + '?gespeichert=1&by=daniel'},
+    )
+
+    assert response['Location'].endswith('/gekocht/?by=daniel&geloescht=1')
+
+# --- what the page says back -------------------------------------------------
+
+
+def test_saving_returns_to_the_row_that_changed(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+
+    response = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                           {'action': 'save', 'rating': '4', 'next': HISTORY})
+
+    assert response['Location'].endswith(f'#cook-{log.pk}')
+
+
+def test_cooking_it_again_returns_to_the_new_row(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=5)
+
+    response = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                           {'action': 'cook', 'next': HISTORY})
+
+    with scopes_disabled():
+        again = CookLog.objects.filter(recipe=log.recipe).exclude(pk=log.pk).get()
+    assert response['Location'].endswith(f'#cook-{again.pk}')
+
+
+def test_no_nudge_when_everything_is_rated(kitchen):
+    """A block that reports "0× ohne Bewertung" is scaffolding for absent data."""
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    assert 'ohne Bewertung' not in client.get(HISTORY).content.decode()
+
+
+def test_the_nudge_counts_only_the_filtered_person(kitchen):
+    """Two numbers side by side have to count the same rows."""
+    client, space = kitchen
+    mine = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+    _one_cook(space, _kitchen(space, 'Linseneintopf'))
+
+    body = client.get(HISTORY, {'by': mine.created_by.username}).content.decode()
+
+    assert '1×</strong> gekocht' in body
+    assert '2×</strong> gekocht' not in body
+
+
+def test_the_header_counts_the_whole_history_not_the_page(kitchen, monkeypatch):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    for _ in range(3):
+        _one_cook(space, dish, rating=4)
+    monkeypatch.setattr(views.CookedView, 'page_size', 1)
+
+    body = client.get(HISTORY).content.decode()
+
+    assert '<strong>3</strong> Einträge' in body
+    assert '1 von 3 gezeigt' in body
+    assert 'before=' in body
+
+
+def test_one_person_hides_the_person_filter(kitchen):
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+
+    assert 'class="people-tabs' not in client.get(HISTORY).content.decode()
+
+
+def test_two_people_show_the_person_filter(kitchen):
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'))
+    _one_cook(space, _kitchen(space, 'Linseneintopf'))
+
+    assert 'class="people-tabs' in client.get(HISTORY).content.decode()
+
+
+def test_no_template_comment_reaches_the_page(kitchen):
+    """`{# ... #}` spans one line only; a wrapped one prints as literal text."""
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    for url in (HISTORY, URL):
+        body = client.get(url).content.decode()
+        assert '{#' not in body
+        assert '{%' not in body
+
+# --- searching and paging ----------------------------------------------------
+
+
+def test_the_search_filters_by_dish_name(kitchen):
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+    _one_cook(space, _kitchen(space, 'Linseneintopf'), rating=3)
+
+    body = client.get(HISTORY, {'q': 'Kartoffel'}).content.decode()
+
+    assert 'Kartoffelsuppe' in body
+    assert 'Linseneintopf' not in body
+    assert '<strong>1</strong> Einträge' in body
+
+
+def test_a_search_without_a_hit_says_so_and_offers_a_way_back(kitchen):
+    client, space = kitchen
+    _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    body = client.get(HISTORY, {'q': 'Auflauf'}).content.decode()
+
+    assert 'ist nichts eingetragen' in body
+    assert 'Suche zurücksetzen' in body
+
+
+def test_the_cursor_walks_back_without_skipping_a_row(kitchen, monkeypatch):
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    for day in (1, 2, 3):
+        _one_cook(space, dish, when=timezone.now().replace(year=2026, month=11, day=day))
+    monkeypatch.setattr(views.CookedView, 'page_size', 2)
+
+    first = client.get(HISTORY).content.decode()
+    assert 'Ältere Einträge' in first
+    assert '2 von 3 gezeigt' in first
+    before, before_pk = _cursor(first)
+    older = client.get(HISTORY, {'before': before, 'before_pk': before_pk}).content.decode()
+
+    assert '1 von 3 gezeigt' not in older
+    assert 'Ältere Einträge' not in older
+    assert 'November 2026' in older
+
+
+def test_every_row_rates_with_a_star_strip_not_a_select(kitchen):
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating='4.25')
+
+    body = client.get(HISTORY).content.decode()
+
+    assert 'name="rating"' in body
+    assert '<select name="rating"' not in body
+    assert f'id="rate-{log.pk}-0"' in body
+    assert 'value="4.25"' in body
+    assert body.count('class="star-input__hit"') == 20
+
+
+def _cursor(body):
+    from urllib.parse import unquote
+
+    raw = body.split('before=', 1)[1].split('"', 1)[0].replace('&amp;', '&')
+    before, rest = raw.split('&before_pk=', 1)
+    return unquote(before), rest.split('&', 1)[0]
+
+
+def test_two_cooks_in_the_same_minute_are_both_reached(kitchen, monkeypatch):
+    """Same timestamp used to order arbitrarily, so a cursor could skip a row."""
+    client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    stamp = timezone.now().replace(year=2026, month=11, day=23, microsecond=0)
+    pks = [_one_cook(space, dish, when=stamp).pk for _ in range(3)]
+    monkeypatch.setattr(views.CookedView, 'page_size', 2)
+
+    seen, body, params = [], client.get(HISTORY).content.decode(), {}
+    while True:
+        page = client.get(HISTORY, params).content.decode()
+        seen += [int(pk) for pk in _row_ids(page)]
+        if 'Ältere Einträge' not in page:
+            break
+        before, before_pk = _cursor(page)
+        params = {'before': before, 'before_pk': before_pk}
+
+    assert sorted(seen) == sorted(pks)
+    assert len(seen) == len(set(seen))
+
+
+def _row_ids(body):
+    import re
+
+    return re.findall(r'id="cook-(\d+)"', body)

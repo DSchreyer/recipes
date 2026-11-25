@@ -2,7 +2,8 @@
 Stars and the number in one pill. Pass `rating` (0–5) and `label` (the number
 as text, already German-formatted). Callers print nothing else.
 {% endcomment %}
-<span class="rating-chip" title="{{ label }} von 5 Sternen">
+{# One accessible name per chip: the stars carry it, the number is visual. #}
+<span class="rating-chip">
     {% include "kitchen/_stars.html" with rating=rating number=label %}
-    <span class="rating-chip__value">{{ label }}</span>
+    <span class="rating-chip__value" aria-hidden="true">{{ label }}</span>
 </span>

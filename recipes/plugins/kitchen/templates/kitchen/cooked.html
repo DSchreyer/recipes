@@ -11,10 +11,15 @@
                 <p class="page-head__sub mb-0">Was wann auf den Tisch kam — und wie es war.</p>
             </div>
             {% if summary.entries %}
+                {# Inline, not a box: these are the same numbers the rows carry. #}
                 <div class="page-head__stats">
                     <span class="stat"><strong>{{ summary.entries }}</strong> Einträge</span>
-                    {% if summary.average %}
-                        <span class="stat"><strong>⌀ {{ summary.average }}</strong> von 5</span>
+                    {% if summary.average and summary.rated >= 5 %}
+                        <span class="stat">⌀ <strong>{{ summary.average }}</strong> von 5</span>
+                    {% endif %}
+                    {% if summary.last %}
+                        <span class="stat">zuletzt
+                            <strong>{% localtime on %}{{ summary.last|date:"j.n.Y" }}{% endlocaltime %}</strong></span>
                     {% endif %}
                 </div>
             {% endif %}
@@ -23,22 +28,32 @@
         {% if saved %}
             <div class="alert alert-success py-2">Gekocht gespeichert.</div>
         {% endif %}
+        {% if updated %}
+            <div class="alert alert-success py-2">Eintrag geändert.</div>
+        {% endif %}
+        {% if removed %}
+            <div class="alert alert-success py-2">Eintrag gelöscht.</div>
+        {% endif %}
 
-        {% if nudge.cooks %}
-            <div class="nudge mb-3">
-                <p class="mb-1"><strong>{{ nudge.cooks }}×</strong> gekocht, davon
+        {% comment %} Only when there is something to rate: a block that reports "0× ohne
+           Bewertung" is scaffolding for absent data. {% endcomment %}
+        {% if nudge.unrated %}
+            <div class="nudge">
+                <p class="mb-0"><strong>{{ nudge.cooks }}×</strong> gekocht, davon
                     <strong>{{ nudge.unrated }}×</strong> ohne Bewertung.</p>
                 {% if nudge.recipes %}
-                    <p class="small text-muted mb-1">Wieder gekocht, nie bewertet:</p>
-                    <ul class="nudge-list mb-0">
+                    <p class="small mb-1 mt-1">Wieder gekocht, nie bewertet:</p>
+                    <ul class="nudge-list">
                         {% for item in nudge.recipes %}
                             <li class="d-flex align-items-center flex-wrap mb-1">
                                 <a href="/recipe/{{ item.recipe }}" class="mr-2">{{ item.recipe__name }}</a>
                                 <span class="small text-muted mr-2">{{ item.cooks }}×</span>
-                                <form method="post" action="{% url 'kitchen:picker' %}"
+                                {% comment %} This rates the cook that already happened. It used to post to the
+                                   picker and invent a second cook of the same dish. {% endcomment %}
+                                <form method="post" action="{% url 'kitchen:cooked_entry' item.last %}"
                                       class="d-inline-flex align-items-center">
                                     {% csrf_token %}
-                                    <input type="hidden" name="recipe" value="{{ item.recipe }}">
+                                    <input type="hidden" name="action" value="save">
                                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
                                     <select name="rating" class="form-control form-control-sm mr-1"
                                             aria-label="Bewertung für {{ item.recipe__name }}">
@@ -55,42 +70,151 @@
             </div>
         {% endif %}
 
-        {% if people %}
-            <div class="people-tabs mb-3">
-                <a href="?" class="people-tab {% if not by %}people-tab--active{% endif %}">Alle</a>
-                {% for person in people %}
-                    <a href="?by={{ person.username|urlencode }}"
-                       class="people-tab {% if by == person.username %}people-tab--active{% endif %}">{{ person.name }}</a>
-                {% endfor %}
-            </div>
-        {% endif %}
+        <div class="cook-tools">
+            <form class="cook-search" method="get" role="search">
+                {% if by %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+                <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm"
+                       placeholder="Gericht suchen" aria-label="Gericht suchen">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">Suchen</button>
+                {% if q %}
+                    <a class="cook-search__clear" href="?{% if by %}by={{ by|urlencode }}{% endif %}"
+                       title="Suche zurücksetzen" aria-label="Suche zurücksetzen">&times;</a>
+                {% endif %}
+            </form>
+            {# A filter with one real option is a control that cannot change anything. #}
+            {% if people|length > 1 %}
+                <div class="people-tabs">
+                    <a href="?{% if q %}q={{ q|urlencode }}{% endif %}"
+                       class="people-tab {% if not by %}people-tab--active{% endif %}">Alle</a>
+                    {% for person in people %}
+                        <a href="?by={{ person.username|urlencode }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}"
+                           class="people-tab {% if by == person.username %}people-tab--active{% endif %}">{{ person.name }}</a>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
 
         {% for month in months %}
-            <h2 class="h6 text-uppercase text-muted mt-4 mb-2">{{ month.label }}</h2>
-            {% for log in month.logs %}
-                <a class="cooked-row mb-2 text-decoration-none" href="/recipe/{{ log.recipe_id }}">
-                    <div class="d-flex justify-content-between align-items-baseline">
-                        <span class="cooked-row__name">{{ log.recipe.name }}</span>
-                        <span class="cooked-row__date">{% localtime on %}{{ log.created_at|date:"j.n.Y" }}{% endlocaltime %}</span>
-                    </div>
-                    <div class="d-flex align-items-center flex-wrap mt-1">
-                        <span class="cooked-row__person mr-2">{{ log.created_by.get_user_display_name }}</span>
-                        {% if log.rating %}
-                            {% include "kitchen/_rating_chip.html" with rating=log.rating label=log.rating_number %}
+            <h2 class="month-head">
+                <span>{{ month.label }}</span>
+                <span class="month-head__meta">{{ month.count }}×{% if month.average %} · ⌀ {{ month.average }}{% endif %}</span>
+            </h2>
+            <ul class="cook-list">
+                {% for log in month.logs %}
+                    <li class="cook-row{% if not log.image_url %} cook-row--text{% endif %}" id="cook-{{ log.pk }}">
+                        {% if log.image_url %}
+                            <a class="cook-row__photo" href="/recipe/{{ log.recipe_id }}" tabindex="-1" aria-hidden="true">
+                                <img src="{{ log.image_url }}" alt="">
+                            </a>
                         {% endif %}
-                    </div>
-                    {% if log.comment %}
-                        <blockquote class="cook-note">„{{ log.comment }}“</blockquote>
-                    {% endif %}
-                </a>
-            {% endfor %}
+                        <div class="cook-row__body">
+                            <div class="cook-row__top">
+                                <a class="cook-row__name" href="/recipe/{{ log.recipe_id }}">{{ log.recipe.name }}</a>
+                                <span class="cook-row__date">{% localtime on %}{{ log.created_at|date:"j.n.Y" }}{% endlocaltime %}</span>
+                            </div>
+                            <div class="cook-row__meta">
+                                <span class="cook-row__person">{{ log.person_name }}</span>
+                                {% if log.rating %}
+                                    {% include "kitchen/_rating_chip.html" with rating=log.rating label=log.rating_number %}
+                                {% endif %}
+                                {% for axis in log.axes %}<span class="axis-chip">{{ axis }}</span>{% endfor %}
+                            </div>
+                            {% if log.comment %}
+                                <blockquote class="cook-note">„{{ log.comment }}“</blockquote>
+                            {% endif %}
+                        </div>
+
+                        {% comment %} One form for the entry, and a second one for logging the dish
+                           again: "Nochmal gekocht" always means today and must never
+                           pick up a date or a note typed into the form above it. {% endcomment %}
+                        <details class="cook-details cook-row__edit">
+                            <summary>Bearbeiten</summary>
+                            <form method="post" action="{% url 'kitchen:cooked_entry' log.pk %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <div class="cook-edit__row">
+                                    <input type="date" name="date" lang="de"
+                                           value="{% localtime on %}{{ log.created_at|date:"Y-m-d" }}{% endlocaltime %}"
+                                           class="form-control form-control-sm" aria-label="Datum">
+                                    <fieldset class="star-input">
+                                        <legend class="sr-only">Bewertung</legend>
+                                        <input class="star-input__radio" type="radio" name="rating"
+                                               id="rate-{{ log.pk }}-0" value=""
+                                               {% if not log.rating %}checked{% endif %}>
+                                        {% for option in rating_options %}
+                                            <input class="star-input__radio" type="radio" name="rating"
+                                                   id="rate-{{ log.pk }}-{{ forloop.counter }}"
+                                                   value="{{ option.value }}"
+                                                   {% if log.rating_number == option.label %}checked{% endif %}>
+                                        {% endfor %}
+                                        <span class="star-input__zone">
+                                            <span class="star-input__stars" aria-hidden="true">
+                                                {% for i in "12345" %}<i class="far fa-star"></i>{% endfor %}
+                                            </span>
+                                            <span class="star-input__fill" aria-hidden="true">
+                                                <span class="star-input__fill-inner">
+                                                    {% for i in "12345" %}<i class="fas fa-star"></i>{% endfor %}
+                                                </span>
+                                            </span>
+                                            <span class="star-input__hits">
+                                                {% for option in rating_options %}
+                                                    <label class="star-input__hit" for="rate-{{ log.pk }}-{{ forloop.counter }}"
+                                                           title="{{ option.label }} Sterne"><span class="sr-only">{{ option.label }} Sterne</span></label>
+                                                {% endfor %}
+                                            </span>
+                                        </span>
+                                        <label class="star-input__none" for="rate-{{ log.pk }}-0">ohne</label>
+                                    </fieldset>
+                                </div>
+                                <input type="text" name="note" value="{{ log.comment|default:'' }}"
+                                       class="form-control form-control-sm mt-1" placeholder="Notiz"
+                                       aria-label="Notiz">
+                                <div class="cook-edit__actions">
+                                    <button class="btn btn-sm btn-primary" type="submit"
+                                            name="action" value="save">Speichern</button>
+                                    <button class="btn btn-sm btn-outline-secondary cook-edit__delete" type="submit"
+                                            name="action" value="delete"
+                                            onclick="return confirm('Diesen Eintrag löschen?');">Löschen</button>
+                                </div>
+                            </form>
+                            <form method="post" action="{% url 'kitchen:cooked_entry' log.pk %}"
+                                  class="cook-edit__again">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="cook">
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">Nochmal gekocht</button>
+                            </form>
+                        </details>
+                    </li>
+                {% endfor %}
+            </ul>
         {% empty %}
-            {% if by %}
+            {% if q %}
+                <p class="text-muted">Für „{{ q }}“ ist nichts eingetragen.
+                    <a href="?{% if by %}by={{ by|urlencode }}{% endif %}">Suche zurücksetzen</a></p>
+            {% elif by %}
                 <p class="text-muted">Für diesen Filter ist nichts eingetragen.</p>
             {% else %}
-                <p class="text-muted">Noch nichts gekocht. Auf „Was koche ich?“ oder auf einer
-                    Rezeptseite steht der Knopf.</p>
+                <div class="cook-empty">
+                    <p class="mb-1">Noch nichts eingetragen.</p>
+                    <p class="small text-muted mb-0">
+                        Ein Eintrag entsteht mit einem Stern auf einer Karte in
+                        <a href="{% url 'kitchen:picker' %}">Was koche ich?</a> oder auf einer Rezeptseite.
+                    </p>
+                </div>
             {% endif %}
         {% endfor %}
+
+        {# Older entries are one cursor away; the header still counts everything. #}
+        {% if more %}
+            <p class="mt-3 mb-0">
+                <a class="people-tab" href="?{% if by %}by={{ by|urlencode }}&amp;{% endif %}{% if q %}q={{ q|urlencode }}&amp;{% endif %}before={{ next_before|urlencode }}&amp;before_pk={{ next_before_pk }}">Ältere Einträge</a>
+                <span class="small text-muted ml-2">{{ shown }} von {{ summary.entries }} gezeigt</span>
+            </p>
+        {% elif paged %}
+            <p class="mt-3 mb-0 small text-muted">
+                Das war der Anfang der Liste. <a href="?{% if by %}by={{ by|urlencode }}{% endif %}{% if q %}{% if by %}&amp;{% endif %}q={{ q|urlencode }}{% endif %}">Nach oben</a>
+            </p>
+        {% endif %}
     </div>
 {% endblock %}
