@@ -28,8 +28,8 @@
             {% if applied %}<a class="applied-clear" href="{{ reset }}">alles zurücksetzen</a>{% endif %}
         </div>
 
-        <details class="filter-panel" id="filters" open>
-            <summary>Filter{% if filter_count %} <span class="filter-panel__count">{{ filter_count }}</span>{% endif %}</summary>
+        <details class="filter-panel" id="filters">
+            <summary>Filter{% if filter_count %} (<span class="filter-panel__count">{{ filter_count }}</span>){% endif %}</summary>
             {% for row in rows %}
                 {% if row.show %}
                     <div class="step">
@@ -52,6 +52,14 @@
                 {% endif %}
             {% endfor %}
         </details>
+        <script>
+            // Desktop shows the whole funnel; a phone keeps it folded behind
+            // the "Filter" bar, so the recipes stay above the fold. Runs while
+            // the panel is still being parsed, so nothing shifts.
+            if (window.matchMedia('(min-width: 768px)').matches) {
+                document.getElementById('filters').open = true;
+            }
+        </script>
 
         <div id="results">
             <div class="results-head">
