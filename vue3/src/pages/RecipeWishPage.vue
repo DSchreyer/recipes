@@ -260,6 +260,7 @@ type WishResponse = RecipeFromSourceResponse & {
 }
 
 const router = useRouter()
+const {getDjangoUrl} = useDjangoUrls()
 const api = new ApiApi()
 const {doAiImportFromSource} = useFileApi()
 const userPreferenceStore = useUserPreferenceStore()
@@ -746,7 +747,7 @@ function save() {
 /* — the prompt, folded away — */
 .prompt {
     margin-top: 2rem;
-    border-top: 1px solid rgba(var(--v-theme-on-surface), .1);
+    border-top: 1px solid rgba(var(--v-theme-on-surface), .16);
 }
 
 .prompt__toggle {
@@ -760,6 +761,12 @@ function save() {
     font: inherit;
     color: rgba(var(--v-theme-on-surface), .7);
     cursor: pointer;
+    transition: color .15s ease;
+}
+
+.prompt__toggle:hover,
+.prompt__toggle:focus-visible {
+    color: rgba(var(--v-theme-on-surface), .95);
 }
 
 .prompt__label {
@@ -778,7 +785,7 @@ function save() {
     font-size: .66rem;
     letter-spacing: .04em;
     text-transform: none;
-    color: rgba(var(--v-theme-on-surface), .5);
+    color: rgba(var(--v-theme-on-surface), .68);
 }
 
 .prompt__chevron {
@@ -1019,7 +1026,7 @@ select.zutaten__unit:focus {
     display: grid;
     grid-template-columns: 1.9rem 1fr;
     gap: .75rem;
-    padding: .55rem 0;
+    padding: .8rem 0;
 }
 
 .steps__row + .steps__row {
@@ -1035,10 +1042,11 @@ select.zutaten__unit:focus {
 }
 
 .steps__name {
-    margin-bottom: .15rem;
-    font-size: .92rem;
-    font-weight: 600;
-    line-height: 1.3;
+    margin-bottom: .2rem;
+    font-size: 1.02rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -.005em;
 }
 
 .steps__title {
