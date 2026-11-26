@@ -15,7 +15,7 @@ installation, configuration and features take upstream's documentation:
 | AI import | `recipes/plugins/ai_import/` | URL and text import through the plugin's own `/api/` endpoint, per-space prompt and preview — see its README |
 | Search and lists | `cookbook/` | search by ingredient food name, the caller's rating on every recipe list; a search costs about 1.1 s |
 
-40 commits on top of the `2.7.8` tag. Nothing upstream was removed.
+A few dozen commits sit on top of the `2.7.8` tag. Nothing upstream was removed.
 
 ## Build and deploy
 
