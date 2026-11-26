@@ -78,10 +78,48 @@ RULES = """Regeln:
 9. "tags" nur aus der Liste unten. Wenn keine passt, lass den Tag weg.
    Höchstens sechs. Nie einen neuen Tag erfinden."""
 
+WISH_SYSTEM = """Du bist Koch und Redakteur für eine deutsche Rezeptdatenbank.
+
+Du bekommst einen Wunsch, keine Quelle: es gibt keine Seite, aus der du abschreiben
+könntest. Entwirf das Gericht, das der Wunsch beschreibt -- vollständig und kochbar.
+Antworte ausschließlich mit einem JSON-Objekt, ohne Erklärungen.
+
+Was erfunden werden muss, wird erfunden: Name, Beschreibung, die Schritte. Was
+gemessen wird, bleibt plausibel: Mengen passend zu den genannten Portionen, Zeiten,
+die zusammenpassen, keine Zutat, die im Rezept nirgends gebraucht wird.
+
+Erfinde keine Zutatennamen und keine Einheiten, die nicht in der Liste unten stehen
+-- nimm die nächstliegende vorhandene. Deutsch. Sachlich und knapp."""
+
+
+def wish_block(wish: dict) -> str:
+    """The household's binding constraints, as prompt lines.
+
+    Kept apart from the free text so a wish that says "für vier" and a
+    servings field that says 6 cannot silently disagree: the field wins
+    because it is written last and marked binding.
+    """
+    lines = ['Vorgaben (verbindlich):']
+    if wish.get('servings'):
+        lines.append(f"- {int(wish['servings'])} Portionen")
+    if wish.get('max_minutes'):
+        lines.append(f"- höchstens {int(wish['max_minutes'])} Minuten Arbeitszeit")
+    if (wish.get('diet') or '').strip():
+        lines.append(f"- Ernährungsweise: {wish['diet'].strip()}")
+    avoid = [a.strip() for a in (wish.get('avoid') or []) if str(a).strip()]
+    if avoid:
+        lines.append("- nicht verwenden: " + ", ".join(avoid))
+    pantry = [a.strip() for a in (wish.get('pantry') or []) if str(a).strip()]
+    if pantry:
+        lines.append("- vorhanden und möglichst verwenden: " + ", ".join(pantry))
+    lines.append("- der Name ist das Gericht, kein Werbetitel"
+                 " und keine Zusammenfassung des Wunsches")
+    return '\n'.join(lines)
+
 
 def build_messages(source: str, *, source_kind: str, known_foods: list[str],
                    known_units: list[str], known_tags: list[str], language: str = 'de',
-                   custom_prompt: str = '') -> list[dict]:
+                   custom_prompt: str = '', wish: dict | None = None) -> list[dict]:
     """Prompt messages for one import.
 
     ``known_*`` are the space's own vocabulary. They are passed as a
@@ -94,10 +132,13 @@ def build_messages(source: str, *, source_kind: str, known_foods: list[str],
     able to delete them. It is placed last so it is the most recent
     instruction the model reads.
     """
+    wish = wish or {}
+    designing = source_kind == 'wish'
     kind = 'Rezeptseite' if source_kind == 'url' else 'Beschreibung des Gerichts'
     user = '\n'.join([
         SCHEMA,
         RULES,
+        *([wish_block(wish)] if designing else []),
         f'Bekannte Zutaten ({len(known_foods)}):\n' + ', '.join(sorted(known_foods)),
         f'Bekannte Einheiten:\n' + ', '.join(sorted(known_units)),
         f'Erlaubte Tags:\n' + '\n'.join(sorted(known_tags)),
@@ -105,10 +146,10 @@ def build_messages(source: str, *, source_kind: str, known_foods: list[str],
         *([f'Zusätzliche Anweisungen des Haushalts (gehen den Regeln oben vor, wo sie '
            f'sich auf Stil und Kürze beziehen, aber nicht bei Punkt 3 bis 6):\n{custom_prompt.strip()}']
           if (custom_prompt or '').strip() else []),
-        f'Quelle ({kind}):',
+        f'Wunsch (entwirf das Gericht):' if designing else f'Quelle ({kind}):',
         source,
     ])
     return [
-        {'role': 'system', 'content': SYSTEM},
+        {'role': 'system', 'content': WISH_SYSTEM if designing else SYSTEM},
         {'role': 'user', 'content': user},
     ]

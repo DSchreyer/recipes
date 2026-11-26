@@ -39,6 +39,7 @@
                         <model-edit-dialog model="MealPlan" :item-defaults="{fromDate: new Date()}"
                                            @create="loadPlan"></model-edit-dialog>
                     </v-btn>
+                    <v-btn variant="text" size="small" :to="{name: 'RecipeWishPage'}">Rezept wünschen</v-btn>
                     <v-btn variant="text" size="small" :to="{name: 'MealPlanPage'}">Wochenplan</v-btn>
                 </div>
             </div>

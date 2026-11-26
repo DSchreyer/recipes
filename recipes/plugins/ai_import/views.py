@@ -50,6 +50,9 @@ class ImportRequestSerializer(serializers.Serializer):
     text = serializers.CharField(required=False, allow_blank=True)
     ai_provider_id = serializers.IntegerField()
     language = serializers.CharField(required=False, default='de', max_length=8)
+    # a wish is a text request with constraints: servings, a time budget, a diet,
+    # what not to use, what is in the fridge. Empty for a URL import.
+    wish = serializers.DictField(required=False)
 
     def validate(self, attrs):
         if not (attrs.get('url') or '').strip() and not (attrs.get('text') or '').strip():
@@ -126,7 +129,8 @@ class FromSourceView(APIView):
                 source_kind = 'url'
             else:
                 text, canonical = source.source_from_text(serializer.validated_data['text']), ''
-                source_kind = 'text'
+                # with constraints the model has to design the dish, not read one
+                source_kind = 'wish' if serializer.validated_data.get('wish') else 'text'
         except source.FetchError as exc:
             return Response({'error': True, 'msg': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -140,6 +144,7 @@ class FromSourceView(APIView):
             known_tags=vocab['tags'],
             language=serializer.validated_data.get('language') or 'de',
             custom_prompt=space_settings.custom_prompt,
+            wish=serializer.validated_data.get('wish'),
         )
 
         litellm.callbacks = [AiCallbackHandler(request.space, request.user, provider, AiLog.F_FILE_IMPORT)]

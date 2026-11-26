@@ -127,7 +127,8 @@ export function useFileApi() {
      * household corrects it and saves. An import nobody reviewed is how a
      * recipe library rots.
      */
-    function doAiImportFromSource(providerId: number, url: string = '', text: string = '') {
+    function doAiImportFromSource(providerId: number, url: string = '', text: string = '',
+                                  wish: Record<string, unknown> | null = null) {
         fileApiLoading.value = true
 
         return fetch(getDjangoUrl(`api/plugins/ai-import/from-source/`), {
@@ -136,7 +137,11 @@ export function useFileApi() {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ai_provider_id: providerId, url, text}),
+            // A wish is a text request plus the household's constraints: servings,
+            // a time budget, a diet, what not to use, what is in the fridge. The
+            // plugin turns them into binding prompt lines instead of prose, so a
+            // wish saying "für vier" cannot outvote a servings field of 6.
+            body: JSON.stringify({ai_provider_id: providerId, url, text, ...(wish ? {wish} : {})}),
         }).then(r => {
             return r.json().then(raw => {
                 const response = RecipeFromSourceResponseFromJSON(raw)
@@ -152,6 +157,12 @@ export function useFileApi() {
                         step.placeholder_state = state
                     }
                 })
+                // Same reason, for the wish page: what the database does not
+                // know yet and what the tag list refused.
+                const extra = response as any
+                extra.unknownFoods = (raw && raw.unknown_foods) || []
+                extra.rejectedTags = (raw && raw.rejected_tags) || []
+                extra.warnings = (raw && raw.warnings) || []
                 return response
             })
         }).finally(() => {

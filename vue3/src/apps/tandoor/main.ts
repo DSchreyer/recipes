@@ -37,6 +37,7 @@ let routes = [
     {path: '/books', component: () => import("@/pages/BooksPage.vue"), name: 'BooksPage', meta: {title: 'Books'}},
     {path: '/book/:bookId', component: () => import("@/pages/BookViewPage.vue"), name: 'BookViewPage', props: true, meta: {title: 'Book'}},
     {path: '/recipe/import', component: () => import("@/pages/RecipeImportPage.vue"), name: 'RecipeImportPage', meta: {title: 'Import'}},
+    {path: '/recipe/wish', component: () => import("@/pages/RecipeWishPage.vue"), name: 'RecipeWishPage', meta: {title: 'Rezeptwunsch'}},
 
     {path: '/recipe/:id', component: () => import("@/pages/RecipeViewPage.vue"), name: 'RecipeViewPage', props: true, meta: {title: 'Recipe'}},
     {path: '/view/recipe/:id', redirect: {name: 'RecipeViewPage'}}, // old Tandoor v1 url pattern

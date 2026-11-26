@@ -298,3 +298,48 @@ def test_each_step_carries_its_placeholder_state(client_for, space_1):
     # A step with no ingredients has nothing to replace and nothing to warn
     # about; 'empty' is what keeps the dialog silent there.
     assert steps[1]['placeholder_state'] == 'empty'
+
+
+def test_wish_import_designs_instead_of_scraping(client_for, space_1):
+    """A wish has no source to copy from, so the prompt has to say so.
+
+    Measured before this: the text mode sent the URL-mode system prompt, which
+    opens with "Erfinde nichts, was nicht in der Quelle steht" -- for a wish that
+    means an answer full of nulls. The constraints are prompt lines of their own so
+    a wish saying "für vier" cannot outvote a servings field of 6.
+    """
+    provider = _provider(space_1)
+
+    with patch('recipes.plugins.ai_import.views.litellm.completion', return_value=_answer()) as completion:
+        response = client_for.post(URL, {
+            'text': 'Etwas mit Kürbis für vier',
+            'ai_provider_id': provider.pk,
+            'wish': {'servings': 4, 'max_minutes': 45, 'diet': 'vegetarisch',
+                     'avoid': ['Sahne'], 'pantry': ['Kürbis', 'Zwiebel']},
+        }, format='json')
+
+    assert response.status_code == 200, getattr(response, 'data', None) or response.content
+    messages = completion.call_args.kwargs['messages']
+    system, user = messages[0]['content'], messages[1]['content']
+    assert 'Entwirf das Gericht' in system
+    assert 'Erfinde nichts, was nicht in der Quelle steht' not in system
+    assert '- 4 Portionen' in user
+    assert 'höchstens 45 Minuten Arbeitszeit' in user
+    assert 'Ernährungsweise: vegetarisch' in user
+    assert 'nicht verwenden: Sahne' in user
+    assert 'vorhanden und möglichst verwenden: Kürbis, Zwiebel' in user
+    assert 'Wunsch (entwirf das Gericht):' in user
+
+
+def test_plain_text_import_keeps_the_source_prompt(client_for, space_1):
+    """Without constraints it is still an import, not a design request."""
+    provider = _provider(space_1)
+
+    with patch('recipes.plugins.ai_import.views.litellm.completion', return_value=_answer()) as completion:
+        response = client_for.post(URL, {'text': 'Irgendein Rezepttext',
+                                         'ai_provider_id': provider.pk}, format='json')
+
+    assert response.status_code == 200, getattr(response, 'data', None) or response.content
+    messages = completion.call_args.kwargs['messages']
+    assert 'Erfinde nichts, was nicht in der Quelle steht' in messages[0]['content']
+    assert 'Vorgaben (verbindlich)' not in messages[1]['content']
