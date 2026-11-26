@@ -7,6 +7,7 @@
         </div>
 
         <div class="recipe-tile__body">
+            <div v-if="meta" class="recipe-tile__meta">{{ meta }}</div>
             <div class="recipe-tile__name">{{ recipe.name }}</div>
             <div class="recipe-tile__blurb">{{ recipe.description }}</div>
             <div class="recipe-tile__foot">
@@ -47,7 +48,7 @@ import {RecipeOverview} from "@/openapi";
 import RecipeImage from "@/components/display/RecipeImage.vue";
 import {axisChips, groupedKeywords} from "@/utils/recipe_axes";
 
-const props = defineProps<{ recipe: RecipeOverview }>()
+const props = defineProps<{ recipe: RecipeOverview, meta?: string }>()
 
 const router = useRouter()
 const showAll = ref(false)
@@ -112,6 +113,14 @@ function open() {
     gap: 4px;
     padding: 12px 14px 14px;
     flex-grow: 1;
+}
+
+.recipe-tile__meta {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: rgb(var(--v-theme-primary));
 }
 
 .recipe-tile__name {

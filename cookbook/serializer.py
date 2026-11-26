@@ -1365,8 +1365,15 @@ class RecipeOverviewSerializer(RecipeBaseSerializer):
     new = serializers.SerializerMethodField('is_recipe_new', read_only=True)
     recent = serializers.CharField(read_only=True)
     rating = CustomDecimalField(required=False, allow_null=True, read_only=True)
-    last_cooked = serializers.DateTimeField(required=False, allow_null=True, read_only=True)
+    last_cooked = serializers.SerializerMethodField(read_only=True)
     created_by = UserSerializer(read_only=True)
+
+    def get_last_cooked(self, obj):
+        # The search annotates the date under `lastcooked` (see
+        # RecipeManager.with_last_cooked); a plain DateTimeField reads the model
+        # attribute of its own name and therefore reported null for every recipe,
+        # which made "-lastcooked" sort correctly but show no date anywhere.
+        return getattr(obj, 'lastcooked', None)
 
     def create(self, validated_data):
         pass

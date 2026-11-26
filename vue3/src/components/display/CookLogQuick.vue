@@ -13,10 +13,10 @@
             ></rating-stars>
             <span v-if="cookCount" class="cook-count">{{ cookCount }}×</span>
         </div>
-        <div v-if="latest" class="cook-log-quick__meta">
+        <div v-if="latest && !compact" class="cook-log-quick__meta">
             Zuletzt {{ lastWhen }} · {{ latest.createdBy?.displayName }}
         </div>
-        <div v-if="latest?.comment" class="cook-note">„{{ latest.comment }}“</div>
+        <div v-if="latest?.comment && !compact" class="cook-note">„{{ latest.comment }}“</div>
 
         <v-dialog v-model="dialog" max-width="520">
             <v-card>
@@ -81,7 +81,7 @@
 
 <script setup lang="ts">
 import {computed, onMounted, ref} from 'vue'
-import {ApiApi, CookLog, Recipe} from '@/openapi'
+import {ApiApi, CookLog, Recipe, RecipeOverview} from '@/openapi'
 import {DateTime} from 'luxon'
 import {ErrorMessageType, useMessageStore} from '@/stores/MessageStore.ts'
 import {VDateInput} from 'vuetify/labs/VDateInput'
@@ -98,8 +98,13 @@ import RatingStars from '@/components/display/RatingStars.vue'
 const emit = defineEmits<{saved: []}>()
 
 const props = defineProps<{
-    recipe: Recipe
+    // a cook log is one tap away from a meal plan row, and those carry the
+    // lighter RecipeOverview; everything used here exists on both
+    recipe: Recipe | RecipeOverview
     servings?: number
+    // a meal-plan row only has room for the button; the recipe page keeps the
+    // "zuletzt gekocht" line and the last note
+    compact?: boolean
 }>()
 
 const api = new ApiApi()

@@ -61,9 +61,35 @@ export function resolveLocale(code: string): string | null {
     return null
 }
 
+/**
+ * The language picked in the settings, if this device ever picked one.
+ * Django keeps it in a cookie and writes it into <html lang>; the cookie is the
+ * only proof that the value was a choice rather than the server default.
+ */
+function chosenLocale(): string | null {
+    const match = document.cookie.match(/(?:^|;\s*)django_language=([^;]+)/)
+    return match ? decodeURIComponent(match[1]) : null
+}
+
 export function setupI18n() {
     const htmlLang = document.querySelector('html')!.getAttribute('lang')
-    let locale = htmlLang ? resolveLocale(htmlLang) : null
+    const chosen = chosenLocale()
+    let locale = chosen ? resolveLocale(chosen) : null
+    if (!locale && htmlLang) {
+        locale = resolveLocale(htmlLang)
+    }
+    if (!locale && !chosen) {
+        // Nobody has chosen on this device yet, and Django ships 'en' in
+        // <html lang> for everyone — which is why a German household was reading
+        // an English UI while de.json sat complete. Follow the browser instead.
+        for (const tag of (navigator.languages ?? [navigator.language])) {
+            const candidate = resolveLocale(tag)
+            if (candidate) {
+                locale = candidate
+                break
+            }
+        }
+    }
     if (!locale) {
         if (htmlLang && htmlLang !== 'en') {
             console.warn('Falling back to locale en because', htmlLang, 'is not supported.')
