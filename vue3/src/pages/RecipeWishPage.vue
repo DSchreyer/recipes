@@ -119,8 +119,11 @@
                             <li v-if="row.header" class="zutaten__group">{{ row.header }}</li>
                             <li v-else class="zutaten__row">
                                 <span class="zutaten__amount">
-                                    <input v-if="editing" v-model.number="row.source.amount" class="zutaten__input"
-                                           type="number" step="0.25" min="0" aria-label="Menge">
+                                    <template v-if="editing">
+                                        <input v-model.number="row.source.amount" class="zutaten__input zutaten__input--amount"
+                                               type="number" step="0.25" min="0" aria-label="Menge">
+                                        <span class="zutaten__unit">{{ row.source.unit?.name }}</span>
+                                    </template>
                                     <template v-else>{{ row.amount }}</template>
                                 </span>
                                 <span class="zutaten__food">
@@ -146,8 +149,7 @@
                             <div class="steps__body">
                                 <p class="steps__text" v-if="!editing">{{ readable(step) }}</p>
                                 <v-textarea v-else class="steps__edit" variant="outlined" density="compact" rows="2"
-                                            auto-grow hide-details :model-value="step.instruction"
-                                            @focus="resolveStep(step)"
+                                            auto-grow hide-details :model-value="readable(step)"
                                             @update:model-value="value => step.instruction = value"></v-textarea>
                             </div>
                         </li>
@@ -289,15 +291,11 @@ function readable(step: any): string {
 }
 
 /**
- * Once a step is edited its text is prose, so the placeholders have to become
- * the amounts they stand for -- otherwise the field would offer syntax to type
- * over. Steps nobody touches keep their placeholders and stay scalable.
+ * The step field shows the sentence, not the template. Typing replaces the
+ * placeholders of that one step with the amounts they stand for -- a field that
+ * offers "{{ ingredients[1] }}" to type over is not an editor, and the steps
+ * nobody touches keep their placeholders and stay scalable.
  */
-function resolveStep(step: any) {
-    if (step.instruction && step.instruction.includes('{{')) {
-        step.instruction = readable(step)
-    }
-}
 
 interface IngredientRow {
     header?: string
@@ -689,7 +687,7 @@ function save() {
     display: grid;
     /* one width for every row: each <li> is its own grid, so max-content would
        size the column per row and the food names would stagger */
-    grid-template-columns: 7rem 1fr;
+    grid-template-columns: 8.5rem 1fr;
     column-gap: .9rem;
     padding: .3rem 0;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07);
@@ -697,6 +695,10 @@ function save() {
 }
 
 .zutaten__amount {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: .3rem;
     white-space: nowrap;
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -717,8 +719,14 @@ function save() {
     color: inherit;
 }
 
-.zutaten__amount .zutaten__input {
+.zutaten__input--amount {
+    width: 4.25rem;
     text-align: right;
+}
+
+.zutaten__unit {
+    font-size: .82rem;
+    color: rgba(var(--v-theme-on-surface), .55);
 }
 
 .zutaten__input:focus {
@@ -865,6 +873,10 @@ function save() {
 
     .draft__numbers {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .zutaten__row {
+        grid-template-columns: 6.5rem 1fr;
     }
 }
 </style>
