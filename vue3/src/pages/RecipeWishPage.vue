@@ -640,9 +640,9 @@ function onCreated(recipe: Recipe) {
 
 .zutaten__row {
     display: grid;
-    /* the widest amount decides the column, so every food name starts on the
-       same line -- "1 Kilogramm" is wider than "1 Prise" and must not fold */
-    grid-template-columns: max-content 1fr;
+    /* one width for every row: each <li> is its own grid, so max-content would
+       size the column per row and the food names would stagger */
+    grid-template-columns: 7rem 1fr;
     column-gap: .9rem;
     padding: .3rem 0;
     border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07);
@@ -688,9 +688,10 @@ function onCreated(recipe: Recipe) {
     place-items: center;
     width: 1.9rem;
     height: 1.9rem;
-    border: 1px solid rgba(var(--v-theme-primary), .45);
+    border: 1px solid rgba(var(--v-theme-primary), .4);
     border-radius: 50%;
-    color: rgb(var(--v-theme-primary));
+    background: rgba(var(--v-theme-primary), .1);
+    color: rgba(var(--v-theme-on-surface), .85);
     font-size: .82rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
