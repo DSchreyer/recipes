@@ -1,187 +1,182 @@
 <template>
     <v-container>
-        <v-row>
-            <v-col>
-                <v-card>
-                    <v-card-title>{{ book.name }}
-                        <v-btn class="float-right" variant="flat" :to="{name: 'BooksPage'}" prepend-icon="$books" v-if="mdAndUp">{{ $t('Books') }}</v-btn>
-                    </v-card-title>
-                    <v-card-text v-if="book.shared && book.shared.length > 0">
-                        <v-chip-group>
-                            <v-label class="me-2">{{ $t('shared_with') }}</v-label>
-                            <v-chip v-for="u in book.shared">{{ u.displayName }}</v-chip>
-                        </v-chip-group>
-                    </v-card-text>
-                    <v-card-text class="text-disabled">
-                        {{ book.description }}
-                    </v-card-text>
-                    <v-expansion-panels v-model="toc">
-                        <v-expansion-panel>
-                            <v-expansion-panel-title>{{ $t('Table_of_Contents') }}</v-expansion-panel-title>
-                            <v-expansion-panel-text>
-                                <v-list>
-                                    <v-list-item v-for="(entry, i) in recipes" :key="entry.id" @click="page = i; toc = false">
-                                        {{ entry.name }}
-                                    </v-list-item>
-                                </v-list>
-                            </v-expansion-panel-text>
-                        </v-expansion-panel>
-                    </v-expansion-panels>
-                </v-card>
+        <v-btn variant="text" size="small" :to="{name: 'BooksPage'}" prepend-icon="$books" class="book-back">
+            Kochbücher
+        </v-btn>
+
+        <header class="book-head">
+            <h1 class="book-head__title">{{ book.name }}</h1>
+            <div class="book-head__shared" v-if="book.shared && book.shared.length">
+                <span>Geteilt mit</span>
+                <v-chip v-for="u in book.shared" :key="u.id" size="x-small" label variant="tonal">
+                    {{ u.displayName }}
+                </v-chip>
+            </div>
+            <p class="book-head__lede" v-if="book.description">{{ book.description }}</p>
+            <div class="book-head__count" v-if="!loading">{{ recipes.length }} Rezepte</div>
+        </header>
+
+        <v-row v-if="loading">
+            <v-col v-for="i in 6" :key="i" cols="6" md="4">
+                <div class="book-ghost">
+                    <div class="book-ghost__cover"></div>
+                    <div class="book-ghost__line"></div>
+                </div>
             </v-col>
         </v-row>
 
-        <v-row>
-            <v-col class="text-center">
-                <v-pagination :model-value="currentPageNumber"
-                              @update:model-value="value => page = (value - 1) * recipesPerPage"
-                              :length="totalPages"
-                ></v-pagination>
+        <v-row v-else>
+            <v-col v-for="recipe in recipes" :key="recipe.id" cols="6" md="4">
+                <book-recipe-tile :recipe="recipe"></book-recipe-tile>
             </v-col>
         </v-row>
 
-        <v-row>
-            <v-col cols="12">
-                <v-window v-model="page" show-arrows>
-                    <template #next>
-                        <v-btn icon="fa-solid fa-chevron-right" variant="plain" @click="page = page + (mdAndUp ? 2 : 1)"></v-btn>
-                    </template>
-                    <template #prev>
-                        <v-btn icon="fa-solid fa-chevron-left" variant="plain" @click="page = page - (mdAndUp ? 2 : 1)"></v-btn>
-                    </template>
-
-                    <v-window-item v-for="(entry, i) in recipes" :key="entry.id">
-                        <v-row>
-                            <v-col cols="12" md="6">
-                                <book-entry-card :recipe-overview="recipes[i]"></book-entry-card>
-                                <div class="text-center mt-1">
-                                    <span class="text-disabled">{{ i + 1 }}</span>
-                                </div>
-                            </v-col>
-                            <v-col cols="6" v-if="mdAndUp && recipes.length > i + 1">
-                                <book-entry-card :recipe-overview="recipes[i + 1]"></book-entry-card>
-                                <div class="text-center mt-1">
-                                    <span class="text-disabled">{{ i + 2 }}</span>
-                                </div>
-                            </v-col>
-                        </v-row>
-                    </v-window-item>
-                </v-window>
-            </v-col>
-        </v-row>
+        <div class="book-empty" v-if="!loading && recipes.length === 0">
+            In diesem Kochbuch liegt noch kein Rezept.
+        </div>
     </v-container>
 </template>
 
 <script setup lang="ts">
-
-
-import {computed, onMounted, ref} from "vue";
-import {ApiApi, RecipeBook, RecipeBookEntry, RecipeOverview} from "@/openapi";
+import {onMounted, ref} from "vue";
+import {ApiApi, RecipeBook, RecipeOverview} from "@/openapi";
 import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
-import {useRouter} from "vue-router";
-import RecipeImage from "@/components/display/RecipeImage.vue";
-import {useDisplay} from "vuetify";
-import BookEntryCard from "@/components/display/BookEntryCard.vue";
+import BookRecipeTile from "@/components/display/BookRecipeTile.vue";
 
-const props = defineProps({
-    bookId: {type: String, required: true},
-})
+const props = defineProps({bookId: {type: String, required: true}})
 
-const {mdAndUp} = useDisplay()
-const router = useRouter()
+const loading = ref(true)
+const book = ref<RecipeBook>({} as RecipeBook)
+const recipes = ref<RecipeOverview[]>([])
 
-const loading = ref(false)
-const loadingEntries = ref(false)
-const toc = ref(false)
-const page = ref(0)
-
-const manualItems = ref(0)
-const filterItems = ref(0)
-
-const recipesPerPage = computed(() => mdAndUp.value ? 2 : 1)
-const totalRecipes = computed(() => manualItems.value + filterItems.value)
-const totalPages = computed(() => Math.ceil(totalRecipes.value / recipesPerPage.value))
-const currentPageNumber = computed(() => Math.floor(page.value / recipesPerPage.value) + 1)
-
-const book = ref({} as RecipeBook)
-const entries = ref([] as RecipeBookEntry[])
-const recipes = ref([] as RecipeOverview[])
-
-onMounted(() => {
-    loadBook()
-})
+onMounted(load)
 
 /**
- * load the given book and trigger loading its entries
+ * A book is its manual entries plus the recipes its saved filter matches. The
+ * whole book loads at once — a cookbook is a shelf, not a slideshow — so there is
+ * no pagination here on purpose.
  */
-function loadBook() {
+async function load() {
     const api = new ApiApi()
     loading.value = true
+    try {
+        const loaded = await api.apiRecipeBookRetrieve({id: props.bookId})
+        book.value = loaded
 
-    api.apiRecipeBookRetrieve({id: props.bookId}).then(r => {
-        book.value = r
+        const overviews: RecipeOverview[] = []
+        const seen = new Set<number>()
 
-        entries.value = []
-        recLoadEntries(1)
-    }).catch(err => {
-        useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
-    }).finally(() => {
+        const push = (overview?: RecipeOverview) => {
+            if (!overview || !overview.id || seen.has(overview.id)) return
+            seen.add(overview.id)
+            overviews.push(overview)
+        }
+
+        if (loaded.id) {
+            const entries = await api.apiRecipeBookEntryList({book: loaded.id, pageSize: 200})
+            entries.results.forEach(entry => push(entry.recipeContent))
+        }
+        if (loaded.filter && loaded.filter.id) {
+            const filtered = await api.apiRecipeList({filter: loaded.filter.id, pageSize: 500})
+            filtered.results.forEach(push)
+        }
+
+        recipes.value = await mostCookedFirst(api, overviews)
+    } catch (e) {
+        useMessageStore().addError(ErrorMessageType.FETCH_ERROR, e)
+    } finally {
         loading.value = false
-    })
+    }
 }
 
-/**
- * recursively load the book entries and trigger loading all entries from a saved custom filter
- * @param page
- */
-function recLoadEntries(page: number) {
-    const api = new ApiApi()
-    loadingEntries.value = true
+/** most cooked first, then alphabetically; falls back to A–Z when nothing is logged */
+async function mostCookedFirst(api: ApiApi, list: RecipeOverview[]): Promise<RecipeOverview[]> {
+    const byName = (a: RecipeOverview, b: RecipeOverview) =>
+        (a.name ?? '').localeCompare(b.name ?? '', 'de')
 
-    api.apiRecipeBookEntryList({book: props.bookId, page: page, pageSize: 50}).then(r => {
-        r.results.forEach(rBE => {
-            recipes.value.push(rBE.recipeContent)
-        })
-        manualItems.value = r.count
-        if (r.next) {
-            recLoadEntries(page + 1)
-        } else {
-            if (book.value.filter) {
-                recLoadFilter(book.value.filter.id, 1)
-            } else {
-                loadingEntries.value = false
-            }
+    const cooks = new Map<number, number>()
+    try {
+        const logs = await api.apiCookLogList({pageSize: 1000})
+        for (const log of logs.results) {
+            const recipe = log.recipe
+            const id = typeof recipe === 'number' ? recipe : (recipe as { id?: number } | undefined)?.id
+            if (id) cooks.set(id, (cooks.get(id) ?? 0) + 1)
         }
-    }).catch(err => {
-        useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
-        loadingEntries.value = false
+    } catch (e) {
+        // an unreadable cook log only costs the sorting, not the book
+    }
+
+    if (cooks.size === 0) return [...list].sort(byName)
+    return [...list].sort((a, b) => {
+        const ca = cooks.get(a.id!) ?? 0
+        const cb = cooks.get(b.id!) ?? 0
+        return ca === cb ? byName(a, b) : cb - ca
     })
 }
-
-/**
- * recursively load the recipes matched by the custom filter configured in the book
- * @param filterId filter id to look for
- * @param page page to load
- */
-function recLoadFilter(filterId: number, page: number) {
-    let api = new ApiApi()
-
-    api.apiRecipeList({filter: filterId, page: page, pageSize: 50}).then(r => {
-        const existingIds = new Set(recipes.value.map(rec => rec.id))
-        const newRecipes = r.results.filter(rec => !existingIds.has(rec.id))
-        recipes.value = recipes.value.concat(newRecipes)
-        filterItems.value = recipes.value.length - manualItems.value
-        if (r.next) {
-            recLoadFilter(filterId, page + 1)
-        } else {
-            loadingEntries.value = false
-        }
-    }).catch(err => {
-        useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
-        loadingEntries.value = false
-    })
-}
-
 </script>
 
-<style scoped></style>
+<style scoped>
+.book-back {
+    margin-bottom: 2px;
+}
+
+.book-head {
+    margin: 2px 0 20px;
+}
+
+.book-head__title {
+    font-size: 1.9rem;
+    font-weight: 650;
+    letter-spacing: -.01em;
+    line-height: 1.1;
+}
+
+.book-head__shared {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: .78rem;
+    color: rgba(var(--v-theme-on-surface), .55);
+}
+
+.book-head__lede {
+    margin-top: 8px;
+    max-width: 68ch;
+    font-size: .95rem;
+    line-height: 1.45;
+    color: rgba(var(--v-theme-on-surface), .72);
+}
+
+.book-head__count {
+    margin-top: 8px;
+    font-size: .8rem;
+    color: rgba(var(--v-theme-on-surface), .5);
+}
+
+.book-ghost__cover {
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+    background: rgba(var(--v-theme-on-surface), .07);
+}
+
+.book-ghost__line {
+    height: 12px;
+    margin-top: 10px;
+    border-radius: 6px;
+    background: rgba(var(--v-theme-on-surface), .07);
+}
+
+.book-empty {
+    padding: 40px 0;
+    font-size: .95rem;
+    color: rgba(var(--v-theme-on-surface), .55);
+}
+
+@media (max-width: 599px) {
+    .book-head__title {
+        font-size: 1.55rem;
+    }
+}
+</style>
