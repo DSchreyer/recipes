@@ -70,6 +70,24 @@ export interface RecipeFromSourceResponse {
      * @memberof RecipeFromSourceResponse
      */
     duplicates?: Array<SourceImportDuplicate>;
+    /**
+     * 
+     * @type {Array<{name: string, folded: string}>}
+     * @memberof RecipeFromSourceResponse
+     */
+    unknownFoods?: Array<{ name: string, folded: string }>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof RecipeFromSourceResponse
+     */
+    rejectedTags?: Array<string>;
+    /**
+     * 
+     * @type {Array<string>}
+     * @memberof RecipeFromSourceResponse
+     */
+    warnings?: Array<string>;
 }
 
 /**
@@ -95,6 +113,9 @@ export function RecipeFromSourceResponseFromJSONTyped(json: any, ignoreDiscrimin
         'error': json['error'] == null ? undefined : json['error'],
         'msg': json['msg'] == null ? undefined : json['msg'],
         'duplicates': json['duplicates'] == null ? undefined : ((json['duplicates'] as Array<any>).map(SourceImportDuplicateFromJSON)),
+        'unknownFoods': json['unknown_foods'] == null ? undefined : json['unknown_foods'],
+        'rejectedTags': json['rejected_tags'] == null ? undefined : json['rejected_tags'],
+        'warnings': json['warnings'] == null ? undefined : json['warnings'],
     };
 }
 
@@ -115,6 +136,9 @@ export function RecipeFromSourceResponseToJSONTyped(value?: RecipeFromSourceResp
         'error': value['error'],
         'msg': value['msg'],
         'duplicates': value['duplicates'] == null ? undefined : ((value['duplicates'] as Array<any>).map(SourceImportDuplicateToJSON)),
+        'unknown_foods': value['unknownFoods'],
+        'rejected_tags': value['rejectedTags'],
+        'warnings': value['warnings'],
     };
 }
 

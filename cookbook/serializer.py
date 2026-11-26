@@ -2426,9 +2426,12 @@ class SourceImportIngredientSerializer(serializers.Serializer):
 
 
 class SourceImportStepSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False, default='')
     instruction = serializers.CharField()
     ingredients = SourceImportIngredientSerializer(many=True)
     show_ingredients_table = serializers.BooleanField(default=True)
+    # 'partial' / 'all' / 'none' / 'empty' -- whether the sentence names its food
+    placeholder_state = serializers.CharField(required=False, default='')
 
 
 class SourceImportKeywordSerializer(serializers.Serializer):
@@ -2476,6 +2479,9 @@ class RecipeFromSourceResponseSerializer(serializers.Serializer):
     error = serializers.BooleanField(default=False)
     msg = serializers.CharField(max_length=1024, default='')
     duplicates = serializers.ListField(child=SourceImportDuplicateSerializer(), default=[], allow_null=False)
+    unknown_foods = serializers.ListField(child=serializers.CharField(), default=[], allow_null=False)
+    rejected_tags = serializers.ListField(child=serializers.CharField(), default=[], allow_null=False)
+    warnings = serializers.ListField(child=serializers.CharField(), default=[], allow_null=False)
 
 
 class AiImportSerializer(serializers.Serializer):

@@ -32,6 +32,12 @@ export interface SourceImportStep {
      * @type {string}
      * @memberof SourceImportStep
      */
+    name?: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof SourceImportStep
+     */
     instruction: string;
     /**
      * 
@@ -45,6 +51,12 @@ export interface SourceImportStep {
      * @memberof SourceImportStep
      */
     showIngredientsTable?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof SourceImportStep
+     */
+    placeholderState?: string;
 }
 
 /**
@@ -66,9 +78,11 @@ export function SourceImportStepFromJSONTyped(json: any, ignoreDiscriminator: bo
     }
     return {
         
+        'name': json['name'] == null ? undefined : json['name'],
         'instruction': json['instruction'],
         'ingredients': ((json['ingredients'] as Array<any>).map(SourceImportIngredientFromJSON)),
         'showIngredientsTable': json['show_ingredients_table'] == null ? undefined : json['show_ingredients_table'],
+        'placeholderState': json['placeholder_state'] == null ? undefined : json['placeholder_state'],
     };
 }
 
@@ -83,9 +97,11 @@ export function SourceImportStepToJSONTyped(value?: SourceImportStep | null, ign
 
     return {
         
+        'name': value['name'],
         'instruction': value['instruction'],
         'ingredients': ((value['ingredients'] as Array<any>).map(SourceImportIngredientToJSON)),
         'show_ingredients_table': value['showIngredientsTable'],
+        'placeholder_state': value['placeholderState'],
     };
 }
 
