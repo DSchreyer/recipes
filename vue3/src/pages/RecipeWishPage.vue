@@ -77,22 +77,37 @@
             <v-alert v-if="error" type="error" variant="tonal" class="mt-6" :text="error"></v-alert>
         </section>
 
-        <!-- 2 — der Entwurf: read it like a recipe, then decide -->
-        <section v-else-if="phase === 'preview' && draft" class="draft">
+        <!-- 2 — der Entwurf: read it like a recipe, then change what does not fit -->
+        <section v-else-if="phase === 'draft' && draft" class="draft">
             <header class="draft__head">
                 <div class="draft__art">
                     <recipe-image :recipe="draft" height="100%" width="100%"></recipe-image>
                 </div>
                 <div class="draft__text">
-                    <div class="draft__eyebrow">Entwurf — nicht gespeichert</div>
-                    <h1 class="draft__title">{{ draft.name }}</h1>
-                    <p class="draft__desc" v-if="draft.description">{{ draft.description }}</p>
-                    <ul class="draft__meta">
+                    <div class="draft__eyebrow">
+                        Entwurf — nicht gespeichert
+                    </div>
+                    <h1 class="draft__title" v-if="!editing">{{ draft.name }}</h1>
+                    <v-text-field v-else v-model="draft.name" class="draft__name" variant="outlined"
+                                  density="comfortable" hide-details label="Name"></v-text-field>
+                    <p class="draft__desc" v-if="!editing && draft.description">{{ draft.description }}</p>
+                    <v-textarea v-if="editing" v-model="draft.description" class="draft__description" variant="outlined"
+                                density="comfortable" rows="2" auto-grow hide-details
+                                label="Beschreibung"></v-textarea>
+                    <ul class="draft__meta" v-if="!editing">
                         <li v-if="draft.servings">{{ draft.servings }} Portionen</li>
                         <li v-if="draft.workingTime">{{ draft.workingTime }} min Arbeit</li>
                         <li v-if="draft.waitingTime">{{ draft.waitingTime }} min warten</li>
                         <li v-if="totalMinutes">{{ totalMinutes }} min gesamt</li>
                     </ul>
+                    <div class="draft__numbers" v-else>
+                        <v-number-input v-model="draft.servings" :precision="0" :min="1" control-variant="stacked"
+                                        variant="outlined" density="compact" hide-details label="Portionen"></v-number-input>
+                        <v-number-input v-model="draft.workingTime" :precision="0" :min="0" control-variant="stacked"
+                                        variant="outlined" density="compact" hide-details label="Arbeit (min)"></v-number-input>
+                        <v-number-input v-model="draft.waitingTime" :precision="0" :min="0" control-variant="stacked"
+                                        variant="outlined" density="compact" hide-details label="Warten (min)"></v-number-input>
+                    </div>
                 </div>
             </header>
 
@@ -103,8 +118,16 @@
                         <template v-for="(row, index) in ingredients" :key="index">
                             <li v-if="row.header" class="zutaten__group">{{ row.header }}</li>
                             <li v-else class="zutaten__row">
-                                <span class="zutaten__amount">{{ row.amount }}</span>
-                                <span class="zutaten__food">{{ row.food }}</span>
+                                <span class="zutaten__amount">
+                                    <input v-if="editing" v-model.number="row.source.amount" class="zutaten__input"
+                                           type="number" step="0.25" min="0" aria-label="Menge">
+                                    <template v-else>{{ row.amount }}</template>
+                                </span>
+                                <span class="zutaten__food">
+                                    <input v-if="editing" class="zutaten__input" :value="row.food"
+                                           aria-label="Zutat" @input="renameFood(row.source, $event)">
+                                    <template v-else>{{ row.food }}</template>
+                                </span>
                                 <span class="zutaten__note" v-if="row.note">{{ row.note }}</span>
                             </li>
                         </template>
@@ -118,11 +141,14 @@
                 <section class="draft__col draft__col--wide">
                     <h2 class="draft__h2">Zubereitung</h2>
                     <ol class="steps">
-                        <li v-for="(step, index) in steps" :key="index" class="steps__row">
+                        <li v-for="(step, index) in draft.steps" :key="index" class="steps__row">
                             <span class="steps__n">{{ index + 1 }}</span>
                             <div class="steps__body">
-                                <p class="steps__text">{{ step.instruction }}</p>
-                                <p class="steps__note" v-if="step.note">{{ step.note }}</p>
+                                <p class="steps__text" v-if="!editing">{{ readable(step) }}</p>
+                                <v-textarea v-else class="steps__edit" variant="outlined" density="compact" rows="2"
+                                            auto-grow hide-details :model-value="step.instruction"
+                                            @focus="resolveStep(step)"
+                                            @update:model-value="value => step.instruction = value"></v-textarea>
                             </div>
                         </li>
                     </ol>
@@ -132,8 +158,10 @@
             <section class="draft__tags" v-if="draft.keywords && draft.keywords.length">
                 <h2 class="draft__h2">Merkmale</h2>
                 <div class="tags">
-                    <span v-for="keyword in draft.keywords" :key="keyword.id ?? keyword.name" class="tags__chip">
+                    <span v-for="(keyword, index) in draft.keywords" :key="keyword.id ?? keyword.name" class="tags__chip">
                         {{ keyword.name }}
+                        <button v-if="editing" type="button" class="tags__x" aria-label="Merkmal entfernen"
+                                @click="draft.keywords.splice(index, 1)">✕</button>
                     </span>
                 </div>
                 <p class="draft__warn" v-if="rejectedTags.length">
@@ -146,10 +174,12 @@
 
             <footer class="draft__actions">
                 <v-btn color="primary" size="large" :loading="saving" @click="save">Speichern</v-btn>
-                <v-btn variant="tonal" size="large" prepend-icon="fa-solid fa-pen" @click="phase = 'edit'">Bearbeiten</v-btn>
+                <v-btn variant="tonal" size="large" :prepend-icon="editing ? '$check' : 'fa-solid fa-pen'"
+                       @click="editing = !editing">{{ editing ? 'Fertig' : 'Bearbeiten' }}</v-btn>
                 <v-btn variant="text" size="large" prepend-icon="fa-solid fa-rotate" @click="again = !again">
                     Anders entwerfen
                 </v-btn>
+                <span class="draft__note">Gespeichert wird nichts, bis du es sagst.</span>
             </footer>
 
             <div class="draft__again" v-if="again">
@@ -163,17 +193,6 @@
             <v-alert v-if="error" type="error" variant="tonal" class="mt-4" :text="error"></v-alert>
         </section>
 
-        <!-- 3 — bearbeiten: Tandoor's own editor, so nothing is a second-class field -->
-        <section v-else-if="phase === 'edit' && draft" class="edit">
-            <div class="edit__bar">
-                <v-btn variant="text" prepend-icon="fa-solid fa-arrow-left" @click="phase = 'preview'">
-                    Zurück zur Vorschau
-                </v-btn>
-                <span class="edit__hint">Speichern legt das Rezept an. Bis dahin ist nichts in der Sammlung.</span>
-            </div>
-            <recipe-editor :item="draft" @create="onCreated" @save="onCreated"></recipe-editor>
-        </section>
-
     </v-container>
 </template>
 
@@ -181,7 +200,6 @@
 import {computed, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {ApiApi, Ingredient, Recipe, RecipeFromSourceResponse} from '@/openapi'
-import RecipeEditor from '@/components/model_editors/RecipeEditor.vue'
 import {useFileApi} from '@/composables/useFileApi'
 import {useUserPreferenceStore} from '@/stores/UserPreferenceStore'
 import {ErrorMessageType, PreparedMessage, useMessageStore} from '@/stores/MessageStore'
@@ -202,7 +220,8 @@ const api = new ApiApi()
 const {doAiImportFromSource} = useFileApi()
 const userPreferenceStore = useUserPreferenceStore()
 
-const phase = ref<'spec' | 'preview' | 'edit'>('spec')
+const phase = ref<'spec' | 'draft'>('spec')
+const editing = ref(false)
 const idea = ref('')
 const feedback = ref('')
 const again = ref(false)
@@ -230,6 +249,14 @@ const examples = [
     'Carbonara, vegetarisch',
 ]
 
+const canDesign = computed(() => !!provider.value && idea.value.trim().length > 0 && !loading.value)
+
+const totalMinutes = computed(() => {
+    const working = draft.value?.workingTime ?? 0
+    const waiting = draft.value?.waitingTime ?? 0
+    return working + waiting || null
+})
+
 /**
  * The model paraphrases the tag list ("Rezeptkategorie::Suppe" for
  * "Rezepttyp::Suppen"), and the plugin refuses anything it cannot resolve.
@@ -239,14 +266,6 @@ const rejectedLabel = computed(() => {
     const names = rejectedTags.value.slice(0, 3)
     const rest = rejectedTags.value.length - names.length
     return names.join(', ') + (rest > 0 ? ` und ${rest} weitere` : '')
-})
-
-const canDesign = computed(() => !!provider.value && idea.value.trim().length > 0 && !loading.value)
-
-const totalMinutes = computed(() => {
-    const working = draft.value?.workingTime ?? 0
-    const waiting = draft.value?.waitingTime ?? 0
-    return working + waiting || null
 })
 
 /**
@@ -269,16 +288,23 @@ function readable(step: any): string {
         })
 }
 
-const steps = computed(() => (draft.value?.steps ?? []).map(step => ({
-    instruction: readable(step),
-    note: step.note ?? '',
-})))
+/**
+ * Once a step is edited its text is prose, so the placeholders have to become
+ * the amounts they stand for -- otherwise the field would offer syntax to type
+ * over. Steps nobody touches keep their placeholders and stay scalable.
+ */
+function resolveStep(step: any) {
+    if (step.instruction && step.instruction.includes('{{')) {
+        step.instruction = readable(step)
+    }
+}
 
 interface IngredientRow {
     header?: string
     amount: string
     food: string
     note: string
+    source: Ingredient
 }
 
 const ingredients = computed<IngredientRow[]>(() => {
@@ -286,13 +312,17 @@ const ingredients = computed<IngredientRow[]>(() => {
     for (const step of draft.value?.steps ?? []) {
         for (const ingredient of step.ingredients ?? []) {
             if (ingredient.isHeader) {
-                rows.push({header: ingredient.food?.name ?? ingredient.originalText ?? '', amount: '', food: '', note: ''})
+                rows.push({
+                    header: ingredient.food?.name ?? ingredient.originalText ?? '',
+                    amount: '', food: '', note: '', source: ingredient,
+                })
                 continue
             }
             rows.push({
                 amount: amountLabel(ingredient),
                 food: ingredient.food?.name ?? '',
                 note: ingredient.note ?? '',
+                source: ingredient,
             })
         }
     }
@@ -312,6 +342,15 @@ function amountLabel(ingredient: Ingredient): string {
         parts.push(ingredient.unit.name)
     }
     return parts.join(' ')
+}
+
+/**
+ * A renamed food drops its id, so Tandoor matches or creates it by name instead
+ * of renaming a food the rest of the library shares.
+ */
+function renameFood(ingredient: any, event: Event) {
+    const name = (event.target as HTMLInputElement).value.trim()
+    ingredient.food = name ? {name} : null
 }
 
 /**
@@ -384,7 +423,8 @@ function design() {
             warnings.value = response.warnings ?? []
             feedback.value = ''
             again.value = false
-            phase.value = 'preview'
+            editing.value = false
+            phase.value = 'draft'
         })
         .catch(() => {
             error.value = 'Die Anfrage ist fehlgeschlagen. Nochmal versuchen?'
@@ -402,8 +442,8 @@ function designAgain() {
 }
 
 /**
- * One click from the preview into the collection: the draft is already the
- * payload the recipe endpoint takes, so nothing has to be re-shaped here.
+ * One click from the draft into the collection: the draft already has the shape
+ * the recipe endpoint takes, so nothing is re-shaped here.
  */
 function save() {
     if (!draft.value) {
@@ -421,11 +461,6 @@ function save() {
         .finally(() => {
             saving.value = false
         })
-}
-
-function onCreated(recipe: Recipe) {
-    useMessageStore().addPreparedMessage(PreparedMessage.CREATE_SUCCESS)
-    router.push({name: 'RecipeViewPage', params: {id: recipe.id}})
 }
 </script>
 
@@ -580,6 +615,11 @@ function onCreated(recipe: Recipe) {
     line-height: 1.1;
 }
 
+.draft__name,
+.draft__description {
+    margin-top: .5rem;
+}
+
 .draft__desc {
     margin-top: .6rem;
     max-width: 58ch;
@@ -603,6 +643,13 @@ function onCreated(recipe: Recipe) {
     content: '·';
     margin-right: .55rem;
     color: rgba(var(--v-theme-on-surface), .3);
+}
+
+.draft__numbers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 150px));
+    gap: .6rem;
+    margin-top: .9rem;
 }
 
 .draft__cols {
@@ -660,6 +707,25 @@ function onCreated(recipe: Recipe) {
     font-weight: 500;
 }
 
+.zutaten__input {
+    width: 100%;
+    padding: .1rem .25rem;
+    border: 1px solid rgba(var(--v-theme-on-surface), .16);
+    border-radius: 5px;
+    background: rgba(var(--v-theme-surface), 1);
+    font: inherit;
+    color: inherit;
+}
+
+.zutaten__amount .zutaten__input {
+    text-align: right;
+}
+
+.zutaten__input:focus {
+    outline: 2px solid rgba(var(--v-theme-primary), .5);
+    outline-offset: 0;
+}
+
 .zutaten__note {
     grid-column: 2;
     font-size: .82rem;
@@ -702,11 +768,9 @@ function onCreated(recipe: Recipe) {
     line-height: 1.6;
 }
 
-.steps__note {
-    margin-top: .3rem;
-    font-size: .85rem;
-    font-style: italic;
-    color: rgba(var(--v-theme-on-surface), .55);
+.steps__edit :deep(textarea) {
+    font-size: .92rem;
+    line-height: 1.55;
 }
 
 .draft__tags {
@@ -720,11 +784,27 @@ function onCreated(recipe: Recipe) {
 }
 
 .tags__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
     padding: .2rem .6rem;
     border: 1px solid rgba(var(--v-theme-on-surface), .14);
     border-radius: 999px;
     font-size: .78rem;
     color: rgba(var(--v-theme-on-surface), .68);
+}
+
+.tags__x {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: .7rem;
+    line-height: 1;
+    color: rgba(var(--v-theme-on-surface), .45);
+}
+
+.tags__x:hover {
+    color: rgb(var(--v-theme-error));
 }
 
 .draft__warn {
@@ -739,10 +819,16 @@ function onCreated(recipe: Recipe) {
 .draft__actions {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: .75rem;
     margin-top: 2.25rem;
     padding-top: 1.5rem;
     border-top: 1px solid rgba(var(--v-theme-on-surface), .1);
+}
+
+.draft__note {
+    font-size: .8rem;
+    color: rgba(var(--v-theme-on-surface), .45);
 }
 
 .draft__again {
@@ -751,20 +837,6 @@ function onCreated(recipe: Recipe) {
     align-items: center;
     gap: .75rem;
     margin-top: 1.25rem;
-}
-
-/* — the editor — */
-.edit__bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.edit__hint {
-    font-size: .8rem;
-    color: rgba(var(--v-theme-on-surface), .5);
 }
 
 @media (max-width: 900px) {
@@ -789,6 +861,10 @@ function onCreated(recipe: Recipe) {
 
     .zutaten__row {
         column-gap: .6rem;
+    }
+
+    .draft__numbers {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 </style>
