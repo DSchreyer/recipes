@@ -12,7 +12,7 @@
             </header>
 
             <v-textarea v-model="idea" class="spec__idea" variant="outlined" rows="3" auto-grow hide-details
-                        autofocus placeholder="Etwas mit Kürbis, vier Portionen, in 45 Minuten"
+                        autofocus placeholder="Zum Beispiel: Kartoffelsuppe mit Würstchen, oder etwas Leichtes mit Zucchini"
                         @keydown.ctrl.enter.prevent="design" @keydown.meta.enter.prevent="design"></v-textarea>
 
             <div class="spec__examples">
@@ -49,10 +49,16 @@
             </div>
 
             <div class="spec__lists">
-                <v-combobox v-model="pantry" label="Vorhanden" placeholder="Kürbis, Zwiebel, Reis" multiple chips
-                            closable-chips variant="outlined" density="comfortable" hide-details></v-combobox>
-                <v-combobox v-model="avoid" label="Nicht verwenden" placeholder="Sahne, Pilze" multiple chips
-                            closable-chips variant="outlined" density="comfortable" hide-details></v-combobox>
+                <div class="knob">
+                    <span class="knob__label">Was ist da?</span>
+                    <v-combobox v-model="pantry" placeholder="Kürbis, Zwiebel, Reis" multiple chips
+                                closable-chips variant="outlined" density="comfortable" hide-details></v-combobox>
+                </div>
+                <div class="knob">
+                    <span class="knob__label">Was soll nicht rein?</span>
+                    <v-combobox v-model="avoid" placeholder="Sahne, Pilze" multiple chips
+                                closable-chips variant="outlined" density="comfortable" hide-details></v-combobox>
+                </div>
             </div>
 
             <div class="spec__go">
@@ -112,7 +118,7 @@
                 <section class="draft__col draft__col--wide">
                     <h2 class="draft__h2">Zubereitung</h2>
                     <ol class="steps">
-                        <li v-for="(step, index) in draft.steps" :key="index" class="steps__row">
+                        <li v-for="(step, index) in steps" :key="index" class="steps__row">
                             <span class="steps__n">{{ index + 1 }}</span>
                             <div class="steps__body">
                                 <p class="steps__text">{{ step.instruction }}</p>
@@ -231,6 +237,31 @@ const totalMinutes = computed(() => {
     const waiting = draft.value?.waitingTime ?? 0
     return working + waiting || null
 })
+
+/**
+ * The draft carries template placeholders for Tandoor's own renderer, which
+ * turns them into amount, unit and food. A preview that shows "{{ ingredients[1] }}"
+ * answers "what will this look like" with "no idea", so they are resolved here
+ * the same way the recipe page will.
+ */
+function readable(step: any): string {
+    const ingredients = step.ingredients || []
+    return (step.instruction || '').replace(/\{\{\s*ingredients\[(\d+)\]\s*\}\}/g,
+        (_match: string, index: string) => {
+            const ingredient = ingredients[Number(index)]
+            if (!ingredient) {
+                return ''
+            }
+            return [amountLabel(ingredient), ingredient.food?.name]
+                .filter((part: string) => !!part)
+                .join(' ')
+        })
+}
+
+const steps = computed(() => (draft.value?.steps ?? []).map(step => ({
+    instruction: readable(step),
+    note: step.note ?? '',
+})))
 
 interface IngredientRow {
     header?: string
