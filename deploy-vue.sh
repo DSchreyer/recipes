@@ -37,3 +37,6 @@ cd /opt/atlas
 ATLAS_DEPLOY_ALLOW_PULL_FAILURE=true ./atlasctl deploy tandoor >/tmp/deploy.log 2>&1 || true
 sleep 25
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep tandoor-recipes
+
+# keep the newest context, drop the rest: each one is a ~55 MB copy of the tree
+ls -dt "$BASE"/build-* 2>/dev/null | tail -n +2 | xargs -r rm -rf
