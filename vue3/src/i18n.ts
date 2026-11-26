@@ -75,13 +75,10 @@ export function setupI18n() {
     const htmlLang = document.querySelector('html')!.getAttribute('lang')
     const chosen = chosenLocale()
     let locale = chosen ? resolveLocale(chosen) : null
-    if (!locale && htmlLang) {
-        locale = resolveLocale(htmlLang)
-    }
-    if (!locale && !chosen) {
-        // Nobody has chosen on this device yet, and Django ships 'en' in
-        // <html lang> for everyone — which is why a German household was reading
-        // an English UI while de.json sat complete. Follow the browser instead.
+    if (!chosen) {
+        // Nobody has chosen a language on this device yet, so <html lang> is only
+        // Django's LANGUAGE_CODE ('en'), which is why a German household read an
+        // English UI while de.json sat complete. Follow the browser instead.
         for (const tag of (navigator.languages ?? [navigator.language])) {
             const candidate = resolveLocale(tag)
             if (candidate) {
@@ -89,6 +86,9 @@ export function setupI18n() {
                 break
             }
         }
+    }
+    if (!locale && htmlLang) {
+        locale = resolveLocale(htmlLang)
     }
     if (!locale) {
         if (htmlLang && htmlLang !== 'en') {
