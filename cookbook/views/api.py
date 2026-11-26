@@ -2280,7 +2280,45 @@ class ShoppingListRecipeViewSet(LoggingMixin, viewsets.ModelViewSet):
                 )
                 entries.append(entry)
 
-            created_entries = ShoppingListEntry.objects.bulk_create(entries)
+            # One product, one line. Two recipes that both need onions arrive as
+            # two entries, and every client that reads entries (the phone app, the
+            # sync, the list page before it groups) then shows the same product
+            # twice. An unchecked entry already waiting for this food and unit is
+            # the same line: the amount is added to it instead of stacking a
+            # second row. Checked entries are never touched -- what was bought
+            # belongs to the last trip, so a new need starts a new row.
+            existing_entries = {}
+            if entries:
+                household_users = [request.user.id]
+                try:
+                    household_users = get_household_user_ids(request.user_space)
+                except AttributeError:
+                    pass
+                food_ids = [e.food_id for e in entries]
+                for entry in ShoppingListEntry.objects.filter(
+                        space_id=request.space.id,
+                        checked=False,
+                        created_by_id__in=household_users,
+                        food_id__in=food_ids,
+                ).only('id', 'food_id', 'unit_id', 'amount'):
+                    existing_entries[(entry.food_id, entry.unit_id)] = entry
+
+            to_create = []
+            to_update = []
+            for entry in entries:
+                match = existing_entries.get((entry.food_id, entry.unit_id))
+                if match is None:
+                    to_create.append(entry)
+                    continue
+                match.amount = Decimal(match.amount) + Decimal(entry.amount)
+                if match.id not in [e.id for e in to_update]:
+                    to_update.append(match)
+
+            if to_update:
+                ShoppingListEntry.objects.bulk_update(to_update, ['amount'])
+                ConnectorManager.add_work(ActionType.UPDATED, *to_update)
+
+            created_entries = ShoppingListEntry.objects.bulk_create(to_create)
 
             list_relations = []
             if safe_shopping_list_ids:
