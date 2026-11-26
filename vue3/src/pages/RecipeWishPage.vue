@@ -236,13 +236,67 @@
             <v-alert v-if="error" type="error" variant="tonal" class="mt-4" :text="error"></v-alert>
         </section>
 
+        <!-- 3 — gespeichert: what a recipe owes after it is written down -->
+        <section v-else-if="phase === 'done' && savedRecipe" class="done">
+            <p class="done__kicker">Gespeichert</p>
+            <h1 class="done__title">{{ savedRecipe.name }}</h1>
+            <p class="done__lead">Steht in der Sammlung. Was noch fehlt, ist der Tag und was eingekauft werden muss.</p>
+
+            <div class="done__actions">
+                <v-btn color="primary" size="large" @click="planOpen = true">Auf den Plan</v-btn>
+                <v-btn variant="text" size="large" :to="{name: 'RecipeViewPage', params: {id: savedRecipe.id}}">
+                    Rezept öffnen
+                </v-btn>
+            </div>
+
+            <!-- what it takes, before it goes on the list -->
+            <div class="done__list" v-if="shoppingRows.length">
+                <p class="done__listhead">
+                    Was auf die Liste soll
+                    <span class="done__count">{{ checkedRows.length }} von {{ shoppingRows.length }}</span>
+                </p>
+                <ul>
+                    <li v-for="row in shoppingRows" :key="row.key" class="done__row"
+                        :class="{'done__row--off': !row.checked}" @click="row.checked = !row.checked">
+                        <v-checkbox-btn v-model="row.checked" density="compact" color="success"
+                                        @click.stop></v-checkbox-btn>
+                        <span class="done__amount">{{ amountLabel(row.ingredient) }}</span>
+                        <span class="done__food">{{ row.ingredient.food?.name }}</span>
+                        <span class="done__note-inline" v-if="row.ingredient.note">{{ row.ingredient.note }}</span>
+                    </li>
+                </ul>
+                <div class="done__actions">
+                    <v-btn color="primary" size="large" :loading="listing" :disabled="!checkedRows.length"
+                           @click="addToShoppingList">
+                        Auf die Einkaufsliste
+                    </v-btn>
+                    <span class="done__note" v-if="listed">Steht auf der Liste.</span>
+                </div>
+            </div>
+
+            <p class="done__note" v-if="savedPlan">
+                Der Plan steht. Die Einkaufsliste liegt auch in Mnemivo — abgeglichen wird alle fünf Minuten,
+                in beide Richtungen.
+            </p>
+            <p class="done__note" v-else>
+                Die Einkaufsliste liegt auch in Mnemivo — abgeglichen wird alle fünf Minuten, in beide Richtungen.
+            </p>
+
+            <model-edit-dialog model="MealPlan" v-model="planOpen" :close-after-create="true"
+                               :itemDefaults="{recipe: savedRecipe, title: savedRecipe.name,
+                                               servings: savedRecipe.servings,
+                                               meal_type: defaultMealType ?? undefined}"
+                               @create="onPlanned"></model-edit-dialog>
+        </section>
+
     </v-container>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {ApiApi, Ingredient, Recipe, RecipeFromSourceResponse, Unit} from '@/openapi'
+import {ApiApi, Ingredient, MealPlan, MealType, Recipe, RecipeFromSourceResponse, Unit} from '@/openapi'
+import ModelEditDialog from '@/components/dialogs/ModelEditDialog.vue'
 import {useFileApi} from '@/composables/useFileApi'
 import {useUserPreferenceStore} from '@/stores/UserPreferenceStore'
 import {ErrorMessageType, MessageType, PreparedMessage, useMessageStore} from '@/stores/MessageStore'
@@ -265,7 +319,7 @@ const api = new ApiApi()
 const {doAiImportFromSource} = useFileApi()
 const userPreferenceStore = useUserPreferenceStore()
 
-const phase = ref<'spec' | 'draft'>('spec')
+const phase = ref<'spec' | 'draft' | 'done'>('spec')
 const editing = ref(false)
 const idea = ref('')
 const feedback = ref('')
@@ -612,6 +666,106 @@ function designAgain() {
  * One click from the draft into the collection: the draft already has the shape
  * the recipe endpoint takes, so nothing is re-shaped here.
  */
+/**
+ * Saving no longer leaves the page. A recipe read at nine in the evening is a
+ * recipe someone means to cook, and the next two questions -- which day, and
+ * what goes on the list -- are the reason the page exists. Both are one click
+ * from here; the plan is also what ties the shopping entries to the meal.
+ */
+const savedRecipe = ref<Recipe | null>(null)
+const savedPlan = ref<MealPlan | null>(null)
+const planOpen = ref(false)
+
+/**
+ * A meal plan without a meal type is refused by the API, and the plan dialog
+ * opens with that field empty when the household has no default configured --
+ * so the page brings one: the default if there is one, else the first the
+ * space has (breakfast, in a space that lists it first).
+ */
+const shoppingRows = ref<{
+    key: string,
+    ingredient: Ingredient,
+    checked: boolean
+}[]>([])
+const listing = ref(false)
+const listed = ref(false)
+const checkedRows = computed(() => shoppingRows.value.filter(row => row.checked))
+
+/**
+ * The draft's ingredients are a preview: they carry amount, unit and food but
+ * no ids, and the shopping list is built from ids. So the overview is drawn
+ * from the saved recipe -- the same objects the recipe page shows -- which also
+ * means it cannot drift from what was written.
+ */
+function buildShoppingRows(recipe: Recipe) {
+    const rows: typeof shoppingRows.value = []
+    ;(recipe.steps || []).forEach((step, stepIndex) => {
+        ;(step.ingredients || []).forEach((ingredient, index) => {
+            if (ingredient.isHeader) {
+                return
+            }
+            rows.push({
+                key: `${stepIndex}-${index}-${ingredient.id ?? ingredient.food?.name ?? ''}`,
+                ingredient: ingredient,
+                checked: true,
+            })
+        })
+    })
+    shoppingRows.value = rows
+    listed.value = false
+}
+
+const defaultMealType = ref<MealType | null>(null)
+api.apiMealTypeList()
+    .then(page => {
+        defaultMealType.value = userPreferenceStore.userSettings.defaultMealType
+            || page.results?.[0] || null
+    })
+    .catch(() => undefined)
+
+function onPlanned(plan: MealPlan) {
+    savedPlan.value = plan
+}
+
+/**
+ * The plan is what ties the entries to the meal: Tandoor groups the shopping
+ * list by it, and Mnemivo's sync carries the same grouping over. Without a plan
+ * the list is still built, just unattached.
+ */
+function addToShoppingList() {
+    if (!savedRecipe.value || !checkedRows.value.length) {
+        return
+    }
+    listing.value = true
+    api.apiShoppingListRecipeCreate({
+        shoppingListRecipe: {
+            recipe: savedRecipe.value.id!,
+            servings: savedRecipe.value.servings ?? 1,
+            mealplan: savedPlan.value?.id ?? null,
+        } as any,
+    })
+        .then(listRecipe => api.apiShoppingListRecipeBulkCreateEntriesCreate({
+            id: listRecipe.id!,
+            shoppingListEntryBulkCreate: {
+                shoppingListsIds: [],
+                entries: checkedRows.value.map(row => ({
+                    amount: row.ingredient.amount ?? 1,
+                    unitId: row.ingredient.unit?.id ?? null,
+                    foodId: row.ingredient.food?.id ?? null,
+                    ingredientId: row.ingredient.id ?? null,
+                })),
+            },
+        }))
+        .then(() => {
+            useMessageStore().addPreparedMessage(PreparedMessage.CREATE_SUCCESS)
+            listed.value = true
+        })
+        .catch(err => useMessageStore().addError(ErrorMessageType.CREATE_ERROR, err))
+        .finally(() => {
+            listing.value = false
+        })
+}
+
 function save() {
     if (!draft.value) {
         return
@@ -620,7 +774,14 @@ function save() {
     api.apiRecipeCreate({recipe: draft.value})
         .then(recipe => {
             useMessageStore().addPreparedMessage(PreparedMessage.CREATE_SUCCESS)
-            router.push({name: 'RecipeViewPage', params: {id: recipe.id}})
+            savedRecipe.value = recipe as unknown as Recipe
+            phase.value = 'done'
+            api.apiRecipeRetrieve({id: recipe.id!})
+                .then(saved => {
+                    savedRecipe.value = saved
+                    buildShoppingRows(saved)
+                })
+                .catch(() => undefined)
         })
         .catch(err => {
             useMessageStore().addError(ErrorMessageType.CREATE_ERROR, err)
@@ -742,6 +903,109 @@ function save() {
 
 .spec__hint a {
     color: rgb(var(--v-theme-primary));
+}
+
+/* — after saving — */
+.done {
+    max-width: 720px;
+    margin: 3.5rem auto 0;
+}
+
+.done__kicker {
+    font-size: .74rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(var(--v-theme-on-surface), .5);
+}
+
+.done__title {
+    margin-top: .4rem;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(1.9rem, 4.5vw, 2.6rem);
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.done__lead {
+    margin-top: .6rem;
+    max-width: 52ch;
+    font-size: .98rem;
+    line-height: 1.6;
+    color: rgba(var(--v-theme-on-surface), .66);
+}
+
+.done__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem 1rem;
+    margin-top: 1.6rem;
+}
+
+.done__note {
+    margin-top: 1.4rem;
+    max-width: 58ch;
+    font-size: .84rem;
+    line-height: 1.55;
+    color: rgba(var(--v-theme-on-surface), .5);
+}
+
+/* — what goes on the list — */
+.done__list {
+    margin-top: 2.2rem;
+    border-top: 1px solid rgba(var(--v-theme-on-surface), .1);
+    padding-top: 1.4rem;
+}
+
+.done__listhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: .74rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(var(--v-theme-on-surface), .5);
+    margin-bottom: .6rem;
+}
+
+.done__count {
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: .82rem;
+}
+
+.done__list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.done__row {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    padding: .35rem 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), .06);
+    cursor: pointer;
+}
+
+.done__row--off {
+    color: rgba(var(--v-theme-on-surface), .38);
+    text-decoration: line-through;
+}
+
+.done__amount {
+    min-width: 6rem;
+    font-variant-numeric: tabular-nums;
+    color: rgba(var(--v-theme-on-surface), .7);
+}
+
+.done__food {
+    flex: 1;
+}
+
+.done__note-inline {
+    font-size: .82rem;
+    color: rgba(var(--v-theme-on-surface), .45);
 }
 
 /* — the prompt, folded away — */

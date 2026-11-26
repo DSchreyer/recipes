@@ -241,6 +241,22 @@ function initializeEditor() {
 
             if (useUserPreferenceStore().userSettings.defaultMealType){
                 editingObj.value.mealType = useUserPreferenceStore().userSettings.defaultMealType
+            } else {
+                // No default configured: the field would stay empty and the API
+                // refuses a plan without a meal type, so the first one configured
+                // stands in. Without this a new plan cannot be created at all.
+                api.apiMealTypeList().then((page) => {
+                    const first = page.results?.[0]
+                    // A fresh MealPlan carries an empty MealType object, which is
+                    // truthy but has no id -- check the id, not the object.
+                    if (editingObj.value.mealType?.id || !first) {
+                        return
+                    }
+                    editingObj.value.mealType = first
+                    if (first.time) {
+                        mealPlanTime.value = first.time.substring(0, 5)
+                    }
+                }).catch(() => undefined)
             }
 
             editingObj.value.addshopping = useUserPreferenceStore().userSettings.mealplanAutoaddShopping
