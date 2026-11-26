@@ -94,7 +94,9 @@ Erfinde keine Zutatennamen und keine Einheiten, die nicht in der Liste unten ste
 Zwei Regeln für die Schritte, weil an die Stelle jeder Zutat später Menge und
 Einheit treten: nenne die Zutat ohne Artikel und ohne Menge, also "Zwiebel
 würfeln und in Olivenöl glasig dünsten" statt "Die Zwiebel in 2 EL Olivenöl".
-Und schreibe Mengen ab 1000 g als Kilogramm, ab 1000 ml als Liter."""
+Und schreibe Mengen ab 1000 g als Kilogramm, ab 1000 ml als Liter.
+Kein Eigenschaftswort direkt vor der Zutat: nicht "gehackte Petersilie", sondern
+"Petersilie, gehackt" -- sonst heißt es später "gehackte 1 Bund Petersilie"."""
 
 
 def wish_block(wish: dict) -> str:

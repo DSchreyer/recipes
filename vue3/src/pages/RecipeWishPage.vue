@@ -114,7 +114,7 @@
             <div class="draft__cols">
                 <section class="draft__col">
                     <h2 class="draft__h2">Zutaten</h2>
-                    <ul class="zutaten">
+                    <ul class="zutaten" :class="{ 'zutaten--editing': editing }">
                         <template v-for="(row, index) in ingredients" :key="index">
                             <li v-if="row.header" class="zutaten__group">{{ row.header }}</li>
                             <li v-else class="zutaten__row">
@@ -122,7 +122,13 @@
                                     <template v-if="editing">
                                         <input v-model.number="row.source.amount" class="zutaten__input zutaten__input--amount"
                                                type="number" step="0.25" min="0" aria-label="Menge">
-                                        <span class="zutaten__unit">{{ row.source.unit?.name }}</span>
+                                        <select class="zutaten__unit" :value="row.source.unit?.name ?? ''"
+                                                aria-label="Einheit" @change="setUnit(row.source, $event)">
+                                            <option value="">—</option>
+                                            <option v-for="unit in unitOptions" :key="unit.id" :value="unit.name">
+                                                {{ unit.name }}
+                                            </option>
+                                        </select>
                                     </template>
                                     <template v-else>{{ row.amount }}</template>
                                 </span>
@@ -199,9 +205,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
-import {ApiApi, Ingredient, Recipe, RecipeFromSourceResponse} from '@/openapi'
+import {ApiApi, Ingredient, Recipe, RecipeFromSourceResponse, Unit} from '@/openapi'
 import {useFileApi} from '@/composables/useFileApi'
 import {useUserPreferenceStore} from '@/stores/UserPreferenceStore'
 import {ErrorMessageType, PreparedMessage, useMessageStore} from '@/stores/MessageStore'
@@ -244,6 +250,37 @@ const draft = ref<Recipe | null>(null)
 const unknownFoods = ref<UnknownFood[]>([])
 const rejectedTags = ref<string[]>([])
 const warnings = ref<string[]>([])
+
+/**
+ * The units the collection knows. The kitchen's units are a closed list in
+ * Tandoor, so the one word in a line that cannot be retyped gets a select:
+ * a draft that says "Gramm" where it should say "Stück" is otherwise only
+ * fixable in the full editor.
+ */
+const units = ref<Unit[]>([])
+
+const unitOptions = computed(() => [...units.value]
+    .filter(unit => !!unit.name)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de')))
+
+function loadUnits() {
+    if (units.value.length) {
+        return
+    }
+    api.apiUnitList({pageSize: 500})
+        .then(page => {
+            units.value = page.results ?? []
+        })
+        .catch(() => {
+            // no list, no select: the draft is still readable and saveable
+        })
+}
+
+watch(editing, value => {
+    if (value) {
+        loadUnits()
+    }
+})
 
 const examples = [
     'Etwas mit Kürbis, vier Portionen, in 45 Minuten',
@@ -349,6 +386,13 @@ function amountLabel(ingredient: Ingredient): string {
 function renameFood(ingredient: any, event: Event) {
     const name = (event.target as HTMLInputElement).value.trim()
     ingredient.food = name ? {name} : null
+}
+
+/** A unit is picked from the list, never typed: the recipe endpoint needs an id. */
+function setUnit(ingredient: any, event: Event) {
+    const name = (event.target as HTMLSelectElement).value
+    const unit = units.value.find(candidate => candidate.name === name)
+    ingredient.unit = unit ? {id: unit.id, name: unit.name} : null
 }
 
 /**
@@ -724,9 +768,36 @@ function save() {
     text-align: right;
 }
 
+/* the whole amount cell only widens while it holds two fields */
+.zutaten--editing .zutaten__row {
+    grid-template-columns: 11rem 1fr;
+}
+
+.zutaten--editing .zutaten__input--amount {
+    flex: 0 0 3.75rem;
+    width: 3.75rem;
+}
+
 .zutaten__unit {
     font-size: .82rem;
     color: rgba(var(--v-theme-on-surface), .55);
+}
+
+select.zutaten__unit {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: .1rem .1rem .1rem .25rem;
+    border: 1px solid rgba(var(--v-theme-on-surface), .16);
+    border-radius: 5px;
+    background: rgba(var(--v-theme-surface), 1);
+    font: inherit;
+    font-size: .82rem;
+    color: inherit;
+    cursor: pointer;
+}
+
+select.zutaten__unit:focus {
+    outline: 2px solid rgba(var(--v-theme-primary), .5);
 }
 
 .zutaten__input:focus {
@@ -877,6 +948,10 @@ function save() {
 
     .zutaten__row {
         grid-template-columns: 6.5rem 1fr;
+    }
+
+    .zutaten--editing .zutaten__row {
+        grid-template-columns: 9.5rem 1fr;
     }
 }
 </style>
