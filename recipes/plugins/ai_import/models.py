@@ -44,6 +44,15 @@ class AiImportSettings(models.Model):
         help_text='Schritttitel aus dem Anweisungstext zurück in das Titelfeld heben.',
     )
 
+    # The main brief for a wish. Empty means the built-in WISH_SYSTEM; the
+    # schema, the rules and the vocabulary are appended either way.
+    wish_prompt = models.TextField(
+        blank=True, default='',
+        validators=[MaxLengthValidator(4000)],
+        help_text='Hauptprompt für Rezeptwünsche. Leer heißt: der eingebaute. '
+                  'Antwortformat, Regeln und Wortlisten kommen immer dazu.',
+    )
+
     custom_prompt = models.TextField(
         blank=True, default='',
         validators=[MaxLengthValidator(2000)],
@@ -67,6 +76,7 @@ DEFAULTS = {
     'placeholders_enabled': True,
     'images_enabled': True,
     'enforce_step_titles': True,
+    'wish_prompt': '',
     'custom_prompt': '',
 }
 
@@ -77,6 +87,7 @@ class _UnsavedSettings:
     placeholders_enabled = True
     images_enabled = True
     enforce_step_titles = True
+    wish_prompt = ''
     custom_prompt = ''
     pk = None
 

@@ -91,12 +91,29 @@ die zusammenpassen, keine Zutat, die im Rezept nirgends gebraucht wird.
 Erfinde keine Zutatennamen und keine Einheiten, die nicht in der Liste unten stehen
 -- nimm die nächstliegende vorhandene. Deutsch. Sachlich und knapp.
 
-Zwei Regeln für die Schritte, weil an die Stelle jeder Zutat später Menge und
+Die Schritte sind der Teil, an dem das Rezept benutzt wird. Schreibe sie so:
+
+- Vier bis sieben Schritte. Ein Schritt ist ein Abschnitt der Arbeit, kein
+  einzelner Handgriff: "Gemüse vorbereiten" ist einer, "Zwiebel würfeln" ist
+  keiner.
+- Jeder Schritt hat einen Titel (name), der eine Tätigkeit nennt ("Gemüse
+  anbraten"), keine Nummer und keinen Gerichtnamen.
+- Zwei bis drei Sätze je Schritt: was passiert, womit (Topf, Pfanne, Blech,
+  Herdplatte, Ofen mit Temperatur) und woran man merkt, dass es fertig ist
+  ("bis die Zwiebeln glasig sind"). Eine Minute nur, wenn sie wirklich zählt.
+- Höchstens zwei Tätigkeiten pro Schritt. Was gleichzeitig in einem Topf
+  passiert, gehört zusammen; was danach kommt, in den nächsten Schritt.
+- Ein Schritt wiederholt keinen früheren: nicht noch einmal salzen, was schon
+  gewürzt wurde, und nicht am Ende abschmecken, was in Schritt 2 gewürzt wurde.
+
+Vier Regeln für den Text, weil an die Stelle jeder Zutat später Menge und
 Einheit treten: nenne die Zutat ohne Artikel und ohne Menge, also "Zwiebel
 würfeln und in Olivenöl glasig dünsten" statt "Die Zwiebel in 2 EL Olivenöl".
-Und schreibe Mengen ab 1000 g als Kilogramm, ab 1000 ml als Liter.
-Kein Eigenschaftswort direkt vor der Zutat: nicht "gehackte Petersilie", sondern
-"Petersilie, gehackt" -- sonst heißt es später "gehackte 1 Bund Petersilie"."""
+Schreibe Mengen ab 1000 g als Kilogramm, ab 1000 ml als Liter. Kein
+Eigenschaftswort direkt vor der Zutat: nicht "gehackte Petersilie", sondern
+"Petersilie, gehackt" -- sonst heißt es später "gehackte 1 Bund Petersilie".
+Und nenne jede Zutat in dem Schritt, der sie verbraucht, in dessen
+Zutatenliste; ein Schritt ohne Zutaten ("Ofen vorheizen") hat eine leere."""
 
 
 def wish_block(wish: dict) -> str:
@@ -126,12 +143,19 @@ def wish_block(wish: dict) -> str:
 
 def build_messages(source: str, *, source_kind: str, known_foods: list[str],
                    known_units: list[str], known_tags: list[str], language: str = 'de',
-                   custom_prompt: str = '', wish: dict | None = None) -> list[dict]:
+                   custom_prompt: str = '', wish: dict | None = None,
+                   system_prompt: str = '') -> list[dict]:
     """Prompt messages for one import.
 
     ``known_*`` are the space's own vocabulary. They are passed as a
     newline-separated list rather than JSON so a long food list costs few
     tokens; 700 foods fit comfortably next to the recipe text.
+
+    ``system_prompt`` replaces the built-in wish brief when the household wrote
+    its own. Only the brief: the schema, the rules and the vocabulary lists stay
+    below it, because those are the contract the answer is parsed against -- a
+    prompt field that could delete the schema would break the import and blame
+    the model.
 
     ``custom_prompt`` is the space's own extra instruction. It is appended
     after the rules rather than mixed into them, because the rules are what
@@ -157,6 +181,6 @@ def build_messages(source: str, *, source_kind: str, known_foods: list[str],
         source,
     ])
     return [
-        {'role': 'system', 'content': WISH_SYSTEM if designing else SYSTEM},
+        {'role': 'system', 'content': (system_prompt.strip() or WISH_SYSTEM) if designing else SYSTEM},
         {'role': 'user', 'content': user},
     ]

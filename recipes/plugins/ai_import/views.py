@@ -145,6 +145,7 @@ class FromSourceView(APIView):
             language=serializer.validated_data.get('language') or 'de',
             custom_prompt=space_settings.custom_prompt,
             wish=serializer.validated_data.get('wish'),
+            system_prompt=getattr(space_settings, 'wish_prompt', ''),
         )
 
         litellm.callbacks = [AiCallbackHandler(request.space, request.user, provider, AiLog.F_FILE_IMPORT)]

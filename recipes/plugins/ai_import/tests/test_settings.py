@@ -93,10 +93,14 @@ class TestSettingsEndpoint:
     def test_get_without_a_row_returns_defaults_and_creates_nothing(self, client_for, space_1):
         response = client_for.get(SETTINGS_URL)
         assert response.status_code == 200
-        assert response.data == {
+        data = dict(response.data)
+        default = data.pop('wish_prompt_default')
+        assert 'Entwirf das Gericht' in default
+        assert data == {
             'placeholders_enabled': True,
             'images_enabled': True,
             'enforce_step_titles': True,
+            'wish_prompt': '',
             'custom_prompt': '',
             'stored': False,
         }
@@ -123,6 +127,23 @@ class TestSettingsEndpoint:
         row = client_for.get(SETTINGS_URL).data
         assert row['custom_prompt'] == 'A'
         assert row['images_enabled'] is False
+
+    def test_the_brief_is_stored_per_space_and_can_go_back_to_blank(self, client_for, space_1):
+        """Blank means the built-in brief, so resetting is a save of ' ' by design."""
+        response = client_for.put(SETTINGS_URL, {'wish_prompt': '  Koch wie Oma.  '},
+                                  format='json')
+        assert response.status_code == 200
+        assert response.data['wish_prompt'] == 'Koch wie Oma.'
+        with scopes_disabled():
+            assert AiImportSettings.objects.get(space=space_1).wish_prompt == 'Koch wie Oma.'
+
+        back = client_for.put(SETTINGS_URL, {'wish_prompt': '   '}, format='json')
+        assert back.data['wish_prompt'] == ''
+        assert client_for.get(SETTINGS_URL).data['wish_prompt'] == ''
+
+    def test_the_brief_is_capped(self, client_for):
+        response = client_for.put(SETTINGS_URL, {'wish_prompt': 'x' * 4500}, format='json')
+        assert response.status_code == 400
 
     def test_custom_prompt_is_capped(self, client_for):
         response = client_for.put(SETTINGS_URL, {'custom_prompt': 'x' * 2500}, format='json')

@@ -6,7 +6,7 @@
             <header class="spec__head">
                 <h1 class="spec__title">Was soll es sein?</h1>
                 <p class="spec__lead">
-                    Ein Satz genügt. Atlas entwirft daraus ein Rezept mit Zutaten und Schritten —
+                    Ein Satz genügt. {{ kitchenName }} entwirft daraus ein Rezept mit Zutaten und Schritten —
                     du liest es, änderst, was nicht passt, und speicherst erst dann.
                 </p>
             </header>
@@ -73,6 +73,34 @@
                 </span>
             </div>
             <p class="spec__note">Gespeichert wird nichts, bis du es sagst.</p>
+
+            <!-- the brief the draft is ordered with, editable per space -->
+            <div class="prompt">
+                <button type="button" class="prompt__toggle" @click="togglePrompt">
+                    <span class="prompt__label">
+                        Prompt
+                        <span class="prompt__state">{{ promptIsCustom ? 'eigener' : 'eingebaut' }}</span>
+                    </span>
+                    <span class="prompt__chevron" :class="{ 'prompt__chevron--open': promptOpen }">&#8964;</span>
+                </button>
+                <div class="prompt__body" v-if="promptOpen">
+                    <p class="prompt__hint">
+                        Damit wird der Entwurf bestellt. Antwortformat, Regeln und die Wortlisten
+                        der Sammlung kommen immer dahinter — dieser Text sagt, wie gekocht und
+                        geschrieben wird, und gilt für alle Wünsche in {{ kitchenName }}.
+                    </p>
+                    <v-textarea v-model="promptText" class="prompt__field" variant="outlined" rows="12"
+                                auto-grow hide-details spellcheck="false"></v-textarea>
+                    <div class="prompt__actions">
+                        <v-btn size="small" color="primary" :loading="promptSaving" @click="savePrompt">
+                            Prompt speichern
+                        </v-btn>
+                        <v-btn size="small" variant="text" :disabled="!promptIsCustom" @click="resetPrompt">
+                            Eingebauten wiederherstellen
+                        </v-btn>
+                    </div>
+                </div>
+            </div>
 
             <v-alert v-if="error" type="error" variant="tonal" class="mt-6" :text="error"></v-alert>
         </section>
@@ -148,11 +176,18 @@
                 </section>
 
                 <section class="draft__col draft__col--wide">
-                    <h2 class="draft__h2">Zubereitung</h2>
+                    <h2 class="draft__h2">
+                        Zubereitung
+                        <span class="draft__h2count">{{ draft.steps?.length }} Schritte</span>
+                    </h2>
                     <ol class="steps">
                         <li v-for="(step, index) in draft.steps" :key="index" class="steps__row">
                             <span class="steps__n">{{ index + 1 }}</span>
                             <div class="steps__body">
+                                <p class="steps__name" v-if="!editing && step.name">{{ step.name }}</p>
+                                <v-text-field v-else-if="editing" v-model="step.name" class="steps__title"
+                                              variant="outlined" density="compact" hide-details
+                                              aria-label="Titel des Schritts"></v-text-field>
                                 <p class="steps__text" v-if="!editing">{{ readable(step) }}</p>
                                 <v-textarea v-else class="steps__edit" variant="outlined" density="compact" rows="2"
                                             auto-grow hide-details :model-value="readable(step)"
@@ -205,12 +240,13 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue'
+import {computed, onMounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import {ApiApi, Ingredient, Recipe, RecipeFromSourceResponse, Unit} from '@/openapi'
 import {useFileApi} from '@/composables/useFileApi'
 import {useUserPreferenceStore} from '@/stores/UserPreferenceStore'
-import {ErrorMessageType, PreparedMessage, useMessageStore} from '@/stores/MessageStore'
+import {ErrorMessageType, MessageType, PreparedMessage, useMessageStore} from '@/stores/MessageStore'
+import {useDjangoUrls} from '@/composables/useDjangoUrls'
 
 interface UnknownFood {
     name: string
@@ -287,6 +323,94 @@ const examples = [
     'Ein Sonntagsbraten für sechs, aber ohne Ofen',
     'Carbonara, vegetarisch',
 ]
+
+/**
+ * The space is called whatever the household called it: Atlas here, FranDan in
+ * the second kitchen. The name is data, so the sentence reads it instead of
+ * asserting one -- a page that says "Atlas" to a guest account is a lie.
+ */
+const kitchenName = computed(() => userPreferenceStore.activeSpace.name || 'Die Küche')
+
+/**
+ * The brief the wish is designed with, kept on the server per space. The page
+ * shows the text that is in use -- the built-in one until someone edits it --
+ * so an edit starts from the real thing instead of from a copy that drifts
+ * away from it. Empty on the server means "built-in", which is why resetting
+ * is a save of '' and not a second field.
+ */
+const promptOpen = ref(false)
+const promptText = ref('')
+const promptSaved = ref('')
+const promptDefault = ref('')
+const promptSaving = ref(false)
+
+const promptIsCustom = computed(() => !!promptSaved.value.trim())
+
+function settingsUrl() {
+    return getDjangoUrl('api/plugins/ai-import/settings/')
+}
+
+function csrfToken() {
+    const match = document.cookie.match(/(^| )csrftoken=([^;]+)/)
+    return match ? decodeURIComponent(match[2]) : ''
+}
+
+function loadPrompt() {
+    fetch(settingsUrl(), {headers: {Accept: 'application/json'}})
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (!data) {
+                return
+            }
+            promptSaved.value = data.wish_prompt ?? ''
+            promptDefault.value = data.wish_prompt_default ?? ''
+            promptText.value = promptSaved.value.trim() || promptDefault.value
+        })
+        .catch(() => undefined)
+}
+
+function togglePrompt() {
+    promptOpen.value = !promptOpen.value
+    if (promptOpen.value) {
+        promptText.value = promptSaved.value.trim() || promptDefault.value
+    }
+}
+
+function writePrompt(value: string, done?: () => void) {
+    promptSaving.value = true
+    fetch(settingsUrl(), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken()},
+        body: JSON.stringify({wish_prompt: value}),
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`)
+            }
+            return response.json()
+        })
+        .then(data => {
+            promptSaved.value = data.wish_prompt ?? ''
+            promptDefault.value = data.wish_prompt_default ?? promptDefault.value
+            useMessageStore().addMessage(MessageType.SUCCESS,
+                promptSaved.value ? 'Prompt gespeichert.' : 'Der eingebaute Prompt gilt wieder.')
+            done?.()
+        })
+        .catch(() => useMessageStore().addError(ErrorMessageType.UPDATE_ERROR, null))
+        .finally(() => promptSaving.value = false)
+}
+
+function savePrompt() {
+    writePrompt(promptText.value)
+}
+
+function resetPrompt() {
+    writePrompt('', () => {
+        promptText.value = promptDefault.value
+    })
+}
+
+onMounted(loadPrompt)
 
 const canDesign = computed(() => !!provider.value && idea.value.trim().length > 0 && !loading.value)
 
@@ -619,6 +743,80 @@ function save() {
     color: rgb(var(--v-theme-primary));
 }
 
+/* — the prompt, folded away — */
+.prompt {
+    margin-top: 2rem;
+    border-top: 1px solid rgba(var(--v-theme-on-surface), .1);
+}
+
+.prompt__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: .85rem 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: rgba(var(--v-theme-on-surface), .7);
+    cursor: pointer;
+}
+
+.prompt__label {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .74rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.prompt__state {
+    padding: .1rem .45rem;
+    border: 1px solid rgba(var(--v-theme-on-surface), .18);
+    border-radius: 999px;
+    font-size: .66rem;
+    letter-spacing: .04em;
+    text-transform: none;
+    color: rgba(var(--v-theme-on-surface), .5);
+}
+
+.prompt__chevron {
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform .18s ease;
+}
+
+.prompt__chevron--open {
+    transform: rotate(180deg);
+}
+
+.prompt__body {
+    padding-bottom: .5rem;
+}
+
+.prompt__hint {
+    margin-bottom: .75rem;
+    max-width: 62ch;
+    font-size: .82rem;
+    line-height: 1.5;
+    color: rgba(var(--v-theme-on-surface), .55);
+}
+
+.prompt__field :deep(textarea) {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .8rem;
+    line-height: 1.55;
+}
+
+.prompt__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem 1rem;
+    margin-top: .85rem;
+}
+
 .spec__note {
     margin-top: .6rem;
     font-size: .8rem;
@@ -826,6 +1024,25 @@ select.zutaten__unit:focus {
 
 .steps__row + .steps__row {
     border-top: 1px solid rgba(var(--v-theme-on-surface), .07);
+}
+
+.draft__h2count {
+    margin-left: .5rem;
+    font-size: .78rem;
+    font-weight: 400;
+    letter-spacing: .02em;
+    color: rgba(var(--v-theme-on-surface), .45);
+}
+
+.steps__name {
+    margin-bottom: .15rem;
+    font-size: .92rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.steps__title {
+    margin-bottom: .4rem;
 }
 
 .steps__n {

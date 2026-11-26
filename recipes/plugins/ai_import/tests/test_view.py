@@ -331,6 +331,34 @@ def test_wish_import_designs_instead_of_scraping(client_for, space_1):
     assert 'Wunsch (entwirf das Gericht):' in user
 
 
+def test_wish_import_uses_the_spaces_own_brief(client_for, space_1):
+    """The household can write the brief itself; the contract stays below it.
+
+    Only the prose is replaceable. Schema, rules and vocabulary are appended by
+    the plugin either way, because they are what the answer is parsed against.
+    """
+    from recipes.plugins.ai_import.models import AiImportSettings
+
+    provider = _provider(space_1)
+    with scopes_disabled():
+        AiImportSettings.objects.create(space=space_1, wish_prompt='KOCH NACH OMAS ART.')
+
+    with patch('recipes.plugins.ai_import.views.litellm.completion', return_value=_answer()) as completion:
+        response = client_for.post(URL, {
+            'text': 'Etwas mit Kürbis',
+            'ai_provider_id': provider.pk,
+            'wish': {'servings': 4},
+        }, format='json')
+
+    assert response.status_code == 200, getattr(response, 'data', None) or response.content
+    messages = completion.call_args.kwargs['messages']
+    assert messages[0]['content'] == 'KOCH NACH OMAS ART.'
+    user = messages[1]['content']
+    assert 'Antwortformat' in user
+    assert 'Bekannte Zutaten' in user
+    assert '- 4 Portionen' in user
+
+
 def test_plain_text_import_keeps_the_source_prompt(client_for, space_1):
     """Without constraints it is still an import, not a design request."""
     provider = _provider(space_1)
