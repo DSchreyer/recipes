@@ -143,6 +143,14 @@
             <book-recipe-tile v-for="r in recipes" :key="r.id" :recipe="r" :meta="tileMeta(r)"></book-recipe-tile>
         </div>
 
+        <!-- the grid never ends, it keeps going: one sentinel at its foot pulls the next page -->
+        <div v-if="viewMode === 'grid' && recipes.length > 0" ref="sentinel" class="find__sentinel">
+            <span v-if="loadingMore" class="find__sentinel-text">lädt …</span>
+            <span v-else-if="!hasMore" class="find__sentinel-text find__sentinel-text--end">
+                {{ tableItemCount }} Rezepte, das war es.
+            </span>
+        </div>
+
         <div v-if="!loading && recipes.length === 0" class="find__empty">
             <!-- A failed request is not an empty result. During a deploy the API
                  answers 502 for a minute, and "Kein Rezept zu „Köhler“" is then a
@@ -164,12 +172,15 @@
             </template>
         </div>
 
-        <div class="find__pager">
+        <div class="find__pager" v-if="viewMode === 'table'">
             <v-pagination v-model="page" :length="Math.ceil(tableItemCount/pageSize)"
                           @update:modelValue="searchRecipes({page: page})" size="small"
                           v-if="recipes.length > 0 && filters['sortOrder'].modelValue != 'random'"></v-pagination>
-            <v-btn rounded="xl" prepend-icon="fa-solid fa-dice" variant="tonal" size="large"
-                   v-if="recipes.length > 0 && filters['sortOrder'].modelValue == 'random'"
+        </div>
+
+        <!-- re-roll lives beside the result line in grid mode, where there is no pager -->
+        <div class="find__reroll" v-if="viewMode === 'grid' && recipes.length > 0 && filters['sortOrder'].modelValue == 'random'">
+            <v-btn rounded="xl" prepend-icon="fa-solid fa-dice" variant="tonal" size="default"
                    @click="searchRecipes({page: 1})">
                 {{ $t('Random Recipes') }}
             </v-btn>
@@ -197,7 +208,7 @@
 
 <script setup lang="ts">
 
-import {computed, markRaw, nextTick, onMounted, ref, toRaw, watch} from "vue";
+import {computed, markRaw, nextTick, onMounted, onUnmounted, ref, toRaw, watch} from "vue";
 import {ApiApi, ApiRecipeListRequest, CustomFilter, RecipeOverview} from "@/openapi";
 import {useI18n} from "vue-i18n";
 import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
@@ -279,9 +290,13 @@ const resultLabel = computed(() => {
     if (searchFailed.value) return 'Suche fehlgeschlagen'
     const total = tableItemCount.value
     if (!total) return debouncedQuery.value ? `Nichts für „${debouncedQuery.value}“` : 'Keine Rezepte'
+    const base = total === 1 ? '1 Rezept' : `${total} Rezepte`
+    if (viewMode.value === 'grid') {
+        // the grid grows, so the useful number is how many of them are already there
+        return recipes.value.length < total ? `${base} · ${recipes.value.length} gezeigt` : base
+    }
     const from = (page.value - 1) * pageSize.value + 1
     const to = Math.min(total, page.value * pageSize.value)
-    const base = total === 1 ? '1 Rezept' : `${total} Rezepte`
     return `${base} · ${from}–${to}`
 })
 
@@ -309,6 +324,9 @@ function tileMeta(recipe: RecipeOverview): string {
 const recipes = ref([] as RecipeOverview[])
 /** the last request failed, so an empty list says nothing about the library */
 const searchFailed = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const sentinel = ref<HTMLElement | null>(null)
 const selectedCustomFilter = ref<null | CustomFilter>(null)
 const newFilterName = ref('')
 
@@ -342,20 +360,50 @@ onMounted(() => {
 })
 
 /**
+ * Infinite scroll: the sentinel sits under the grid, and one screen ahead is enough —
+ * a page arrives in ~70 ms, so the reader never sees the gap.
+ */
+let observer: IntersectionObserver | null = null
+onMounted(() => {
+    observer = new IntersectionObserver((entries) => {
+        if (entries.some(entry => entry.isIntersecting)) loadMore()
+    }, {rootMargin: '800px 0px'})
+    watch(sentinel, (element) => {
+        observer?.disconnect()
+        if (element) observer?.observe(element)
+    }, {immediate: true})
+})
+
+onUnmounted(() => {
+    observer?.disconnect()
+    observer = null
+})
+
+/**
  * perform the recipe search with the given options
  * @param options
  */
 function searchRecipes(options: VDataTableUpdateOptions) {
+    page.value = options.page
+    return runSearch(options.page, false)
+}
+
+/**
+ * One request. In grid mode the page keeps the pages it has already shown and asks for
+ * the next one at the foot of the list, so `append` is what makes the difference
+ * between a search and a scroll.
+ */
+function runSearch(pageNo: number, append: boolean) {
     let api = new ApiApi()
-    loading.value = true
+    if (append) loadingMore.value = true
+    else loading.value = true
     searchFailed.value = false
     hasFiltersApplied.value = false
-    selectedItems.value = []
+    if (!append) selectedItems.value = []
 
-    page.value = options.page
     let searchParameters = {
         query: debouncedQuery.value,
-        page: options.page,
+        page: pageNo,
         pageSize: pageSize.value,
     } as ApiRecipeListRequest
 
@@ -384,8 +432,21 @@ function searchRecipes(options: VDataTableUpdateOptions) {
         hasFiltersApplied.value = true
     }
 
-    api.apiRecipeList(searchParameters, {signal: signal.value}).then((r) => {
-        recipes.value = r.results
+    // an appended page must not share the abort signal of the one it extends
+    const request = append ? api.apiRecipeList(searchParameters) : api.apiRecipeList(searchParameters, {signal: signal.value})
+
+    return request.then((r) => {
+        if (append) {
+            // random order reshuffles the whole library for every page, so a page can
+            // repeat what is already on screen; a page that adds nothing ends the scroll
+            const known = new Set(recipes.value.map(recipe => recipe.id))
+            const fresh = r.results.filter(recipe => !known.has(recipe.id))
+            recipes.value = [...recipes.value, ...fresh]
+            hasMore.value = fresh.length > 0 && recipes.value.length < r.count
+        } else {
+            recipes.value = r.results
+            hasMore.value = recipes.value.length < r.count
+        }
         tableItemCount.value = r.count
     }).catch(err => {
         if (err.name !== 'AbortError' && err.cause?.name !== 'AbortError') {
@@ -394,8 +455,16 @@ function searchRecipes(options: VDataTableUpdateOptions) {
         }
     }).finally(() => {
         loading.value = false
-        window.scrollTo({top: 0, behavior: 'smooth'})
+        loadingMore.value = false
+        if (!append) window.scrollTo({top: 0, behavior: 'smooth'})
     })
+}
+
+/** the next page, if there is one and we are not already fetching it */
+function loadMore() {
+    if (loading.value || loadingMore.value || !hasMore.value || viewMode.value !== 'grid') return
+    const next = Math.floor(recipes.value.length / pageSize.value) + 1
+    runSearch(next, true)
 }
 
 /**
@@ -1173,6 +1242,28 @@ watch(() => filters.value.sortOrder.modelValue, () => {
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 1px 2px rgba(60, 40, 25, .08), 0 10px 26px -22px rgba(60, 40, 25, .5);
+}
+
+.find__sentinel {
+    display: flex;
+    justify-content: center;
+    padding: 28px 0 8px;
+    min-height: 24px;
+}
+
+.find__sentinel-text {
+    font-size: .84rem;
+    color: rgba(var(--v-theme-on-surface), .45);
+}
+
+.find__sentinel-text--end {
+    color: rgba(var(--v-theme-on-surface), .32);
+}
+
+.find__reroll {
+    display: flex;
+    justify-content: center;
+    padding-bottom: 1.5rem;
 }
 
 .find__grid {
