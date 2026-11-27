@@ -5,6 +5,10 @@
 
            <recipe-view v-model="recipe" :servings="servings"></recipe-view>
 
+            <!-- the page is the only place with the full width this grid needs; inside the
+                 intro card it came out in the tag column at 85px per tile -->
+            <similar-recipes v-if="recipe?.id" :recipe="recipe" class="mt-4"></similar-recipes>
+
             <div class="mt-2" v-if="isShared && Object.keys(recipe).length > 0">
                 <import-tandoor-dialog></import-tandoor-dialog>
             </div>
@@ -23,6 +27,7 @@ import {useTitle, useUrlSearchParams} from "@vueuse/core";
 import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
 import {useUserPreferenceStore} from "@/stores/UserPreferenceStore";
 import ImportTandoorDialog from "@/components/dialogs/ImportTandoorDialog.vue";
+import SimilarRecipes from "@/components/display/SimilarRecipes.vue";
 
 const props = defineProps({
     id: {type: String, required: true}
