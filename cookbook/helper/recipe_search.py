@@ -80,6 +80,8 @@ class SearchParams:
     timescooked: str | None = None
     timescooked_gte: str | None = None
     timescooked_lte: str | None = None
+    working_time_gte: str | None = None
+    working_time_lte: str | None = None
     createdon: str | None = None
     createdon_gte: str | None = None
     createdon_lte: str | None = None
@@ -134,6 +136,8 @@ class SearchParams:
             timescooked=params.get('timescooked', None),
             timescooked_gte=params.get('timescooked_gte', None),
             timescooked_lte=params.get('timescooked_lte', None),
+            working_time_gte=params.get('working_time_gte', None),
+            working_time_lte=params.get('working_time_lte', None),
             createdon=params.get('createdon', None),
             createdon_gte=params.get('createdon_gte', None),
             createdon_lte=params.get('createdon_lte', None),
@@ -260,6 +264,7 @@ class RecipeSearch:
         # Annotation + filter methods
         qs = qs.by_rating(user, exact=params.rating, gte=params.rating_gte, lte=params.rating_lte)
         qs = qs.by_times_cooked(user, space, exact=params.timescooked, gte=params.timescooked_gte, lte=params.timescooked_lte)
+        qs = qs.by_working_time(gte=params.working_time_gte, lte=params.working_time_lte)
         qs = qs.by_cooked_on(user, space, gte=params.cookedon_gte, lte=params.cookedon_lte)
         qs = qs.by_viewed_on(user, space, gte=params.viewedon_gte, lte=params.viewedon_lte)
 

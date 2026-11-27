@@ -1754,6 +1754,8 @@ class RecipePagination(PageNumberPagination):
     OpenApiParameter(name='timescooked_gte', description=_('Filter recipes cooked X times or more.'), type=int),
     OpenApiParameter(name='timescooked_lte', description=_('Filter recipes cooked X times or less.'), type=int),
 
+    OpenApiParameter(name='working_time_gte', description=_('Working time in minutes, or more. Waiting time is not counted.'), type=int),
+    OpenApiParameter(name='working_time_lte', description=_('Working time in minutes, or less. Waiting time is not counted.'), type=int),
     OpenApiParameter(name='createdon', description=_('Filter recipes created on the given date.'), type=OpenApiTypes.DATE, ),
     OpenApiParameter(name='createdon_gte', description=_('Filter recipes created on the given date or after.'), type=OpenApiTypes.DATE, ),
     OpenApiParameter(name='createdon_lte', description=_('Filter recipes created on the given date or before.'), type=OpenApiTypes.DATE, ),

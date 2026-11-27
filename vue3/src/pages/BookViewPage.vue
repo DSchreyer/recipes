@@ -16,6 +16,8 @@
             <div class="book-head__count" v-if="!loading">{{ recipes.length }} Rezepte</div>
         </header>
 
+        <recipe-filter-bar v-if="recipes.length" v-model="chipFilters" :recipes="recipes"/>
+
         <v-row v-if="loading">
             <v-col v-for="i in 6" :key="i" cols="6" md="4">
                 <div class="book-ghost">
@@ -26,7 +28,7 @@
         </v-row>
 
         <v-row v-else>
-            <v-col v-for="recipe in recipes" :key="recipe.id" cols="6" md="4">
+            <v-col v-for="recipe in shown" :key="recipe.id" cols="6" md="4">
                 <book-recipe-tile :recipe="recipe"></book-recipe-tile>
             </v-col>
         </v-row>
@@ -34,20 +36,78 @@
         <div class="book-empty" v-if="!loading && recipes.length === 0">
             In diesem Kochbuch liegt noch kein Rezept.
         </div>
+        <div class="book-empty" v-else-if="!loading && shown.length === 0">
+            Kein Rezept in diesem Buch passt zu den Filtern.
+            <button class="book-empty__reset" type="button" @click="resetChips">Filter zurücksetzen</button>
+        </div>
     </v-container>
 </template>
 
 <script setup lang="ts">
-import {onMounted, ref} from "vue";
+import {computed, onMounted, ref} from "vue";
 import {ApiApi, RecipeBook, RecipeOverview} from "@/openapi";
 import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
 import BookRecipeTile from "@/components/display/BookRecipeTile.vue";
+import RecipeFilterBar, {RecipeFilterState} from "@/components/display/RecipeFilterBar.vue";
 
 const props = defineProps({bookId: {type: String, required: true}})
 
 const loading = ref(true)
 const book = ref<RecipeBook>({} as RecipeBook)
 const recipes = ref<RecipeOverview[]>([])
+
+/**
+ * A book is small enough to filter in the browser: the chips narrow the loaded shelf
+ * without a request, so tapping "Herkunft: Italien" answers before the menu closes.
+ */
+const chipFilters = ref<RecipeFilterState>({sort: '', rating: null, time: null, axes: {}})
+
+const shown = computed(() => {
+    const filters = chipFilters.value
+    const axisIds = Object.values(filters.axes).filter((id): id is number => id !== null)
+
+    let list = recipes.value.filter(recipe => {
+        if (filters.rating !== null && (recipe.rating ?? 0) < filters.rating) return false
+        if (filters.time !== null && (!recipe.workingTime || recipe.workingTime > filters.time)) return false
+        if (axisIds.length) {
+            const ids = new Set((recipe.keywords ?? []).map(k => k.id))
+            if (!axisIds.every(id => ids.has(id) || carriesParent(recipe, id))) return false
+        }
+        return true
+    })
+
+    const byName = (a: RecipeOverview, b: RecipeOverview) => (a.name ?? '').localeCompare(b.name ?? '', 'de')
+    if (filters.sort === 'random') list = [...list].sort(() => Math.random() - 0.5)
+    else if (filters.sort === 'name') list = [...list].sort(byName)
+    else if (filters.sort === '-rating') list = [...list].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || byName(a, b))
+    else if (filters.sort === '-lastcooked') list = [...list].sort((a, b) => (Date.parse(String(b.lastCooked ?? 0)) || 0) - (Date.parse(String(a.lastCooked ?? 0)) || 0) || byName(a, b))
+    return list
+})
+
+/** keyword id -> its label path, so a chip on "Italien" can find "Italien::Toskana" */
+const labelById = computed(() => {
+    const map = new Map<number, string>()
+    for (const recipe of recipes.value) {
+        for (const keyword of recipe.keywords ?? []) {
+            if (keyword.label) map.set(keyword.id, keyword.label)
+        }
+    }
+    return map
+})
+
+/**
+ * A chip on "Italien" must keep the Tuscan dishes too: the server matches child
+ * keywords by default, and the bar counts every level of a path, so the book must.
+ */
+function carriesParent(recipe: RecipeOverview, id: number): boolean {
+    const path = labelById.value.get(id)
+    if (!path) return false
+    return (recipe.keywords ?? []).some(k => !!k.label && (k.label === path || k.label.startsWith(path + '::')))
+}
+
+function resetChips() {
+    chipFilters.value = {sort: '', rating: null, time: null, axes: {}}
+}
 
 onMounted(load)
 
@@ -166,6 +226,16 @@ async function mostCookedFirst(api: ApiApi, list: RecipeOverview[]): Promise<Rec
     margin-top: 10px;
     border-radius: 6px;
     background: rgba(var(--v-theme-on-surface), .07);
+}
+
+.book-empty__reset {
+    margin-left: 10px;
+    border: none;
+    background: none;
+    font-size: .95rem;
+    color: rgba(var(--v-theme-primary), .85);
+    text-decoration: underline;
+    cursor: pointer;
 }
 
 .book-empty {

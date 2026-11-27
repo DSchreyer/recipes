@@ -190,6 +190,23 @@ class RecipeQuerySet(models.QuerySet):
             qs = qs.filter(favorite__gte=int(gte))
         return qs
 
+    def by_working_time(self, gte=None, lte=None):
+        """Filter on the recipe's own working time, in minutes.
+
+        Deliberately `working_time` and not `working_time + waiting_time`: a chip that
+        says "bis 30 Minuten" answers "how long do I stand in the kitchen", and a stew
+        that simmers for two hours is still a 20-minute dish. Recipes that never had a
+        time entered drop out of a bounded filter rather than pass it by accident.
+        """
+        if gte is None and lte is None:
+            return self
+        qs = self
+        if gte is not None:
+            qs = qs.filter(working_time__gte=int(gte))
+        if lte is not None:
+            qs = qs.filter(working_time__lte=int(lte))
+        return qs
+
     def by_cooked_on(self, user, space, gte=None, lte=None):
         if not gte and not lte:
             return self

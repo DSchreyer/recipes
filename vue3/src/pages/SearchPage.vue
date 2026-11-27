@@ -28,6 +28,8 @@
                       @keydown.enter="flushQuery()"
                       @click:clear="resetQuery()"></v-text-field>
 
+        <recipe-filter-bar v-model="chipFilters" :recipes="library" @update:model-value="onChipFilters"/>
+
         <section v-if="panel === 'search'" class="find__panel">
             <v-form :disabled="loading">
                 <div v-for="filter in Object.values(filters)" :key="filter.id">
@@ -73,13 +75,6 @@
         </section>
 
         <div class="find__toolbar">
-            <v-select :items="filters.sortOrder.items"
-                      v-model="filters.sortOrder.modelValue"
-                      :label="$t('sort_by')"
-                      density="compact"
-                      variant="outlined"
-                      hide-details
-                      class="find__sort"></v-select>
             <v-btn-toggle v-model="viewMode" density="compact" variant="outlined" divided mandatory class="find__view">
                 <v-btn value="grid" icon="fa-solid fa-grip" :aria-label="$t('Cards')"></v-btn>
                 <v-btn value="table" icon="fa-solid fa-list" :aria-label="$t('Table')"></v-btn>
@@ -227,6 +222,7 @@ import BatchDeleteDialog from "@/components/dialogs/BatchDeleteDialog.vue";
 import {EditorSupportedTypes} from "@/types/Models.ts";
 import BatchEditRecipeDialog from "@/components/dialogs/BatchEditRecipeDialog.vue";
 import VModelSelect from "@/components/inputs/VModelSelect.vue";
+import RecipeFilterBar, {RecipeFilterState} from "@/components/display/RecipeFilterBar.vue";
 
 const {t} = useI18n()
 const router = useRouter()
@@ -341,6 +337,7 @@ onMounted(() => {
     })
 
     enableFiltersWithValues()
+    loadLibrary()
     searchRecipes({page: page.value})
 })
 
@@ -371,6 +368,23 @@ function searchRecipes(options: VDataTableUpdateOptions) {
         }
     })
 
+    // the chips narrow the same request: one value per axis, AND across axes, which is
+    // what `keywords_and` means and what a cook expects from picking two shelves
+    if (chipFilters.value.rating !== null) {
+        searchParameters.ratingGte = chipFilters.value.rating
+        hasFiltersApplied.value = true
+    }
+    if (chipFilters.value.time !== null) {
+        // added to the backend in this fork; the generated client predates the parameter
+        (searchParameters as unknown as Record<string, unknown>).workingTimeLte = chipFilters.value.time
+        hasFiltersApplied.value = true
+    }
+    const axisIds = Object.values(chipFilters.value.axes).filter((id): id is number => id !== null)
+    if (axisIds.length) {
+        searchParameters.keywordsAnd = axisIds
+        hasFiltersApplied.value = true
+    }
+
     api.apiRecipeList(searchParameters, {signal: signal.value}).then((r) => {
         recipes.value = r.results
         tableItemCount.value = r.count
@@ -396,6 +410,7 @@ function reset() {
         filter.modelValue = filter.default
     })
     selectedCustomFilter.value = null
+    chipFilters.value = {sort: '', rating: null, time: null, axes: {}}
     recipes.value = []
     searchRecipes({page: 1})
 }
@@ -1018,6 +1033,41 @@ const filters = ref({
         modelValue: useRouteQuery('includeChildren', 'true')
     },
 })
+
+/**
+ * The chip bar's state. Sort is not kept here alone: it lives in `filters.sortOrder`,
+ * which is a route query, a toolbar control and the paginator's "random" branch — so a
+ * chip writes there and the existing watcher does the searching.
+ */
+const chipFilters = ref<RecipeFilterState>({
+    sort: (filters.value.sortOrder.modelValue as string) ?? '',
+    rating: null,
+    time: null,
+    axes: {},
+})
+
+/** the whole shelf, only to count what the chips may offer; filtering stays on the server */
+const library = ref<RecipeOverview[]>([])
+
+async function loadLibrary() {
+    try {
+        const api = new ApiApi()
+        const all = await api.apiRecipeList({pageSize: 500})
+        library.value = all.results
+    } catch (e) {
+        // counts are a convenience — a failed load must not take the search down with it
+    }
+}
+
+function onChipFilters(value: RecipeFilterState) {
+    const sortChanged = chipFilters.value.sort !== value.sort
+    chipFilters.value = value
+    if (sortChanged) {
+        filters.value.sortOrder.modelValue = value.sort
+        return // the watcher below searches
+    }
+    searchRecipes({page: 1})
+}
 
 /** sorting sits next to the results now, so changing it has to search instead of waiting for the button */
 watch(() => filters.value.sortOrder.modelValue, () => {
