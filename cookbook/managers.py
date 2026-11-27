@@ -414,7 +414,16 @@ class RecipeQuerySet(models.QuerySet):
             elif f in _TEXT_FIELDS:
                 text_fields.append(_TEXT_FIELDS[f])
 
-            if f in _RANK_MAP:
+            # Only the fields that live on the recipe row are ranked. Ranking a
+            # joined field means joining it into the main query, and `Max(rank)`
+            # over that join turns the paginator's count into a DISTINCT over
+            # recipe x steps x ingredients x keywords: measured 2.5 s for a query
+            # with 25 matches, 16.7 s for one with 237, against 76 ms for the same
+            # page with no query at all. The match itself still comes from those
+            # fields (a literal id set, see below); only the tie-breaking score
+            # is given up, and `similarity` + name order the list instead.
+            rankable = f in _PRECOMPUTED and not f.startswith('steps__')
+            if f in _RANK_MAP and rankable:
                 target = _RANK_MAP[f]
                 # A stored `SearchVectorField` must be ranked by reference. A
                 # bare name string makes SearchRank wrap it in SearchVector(),
