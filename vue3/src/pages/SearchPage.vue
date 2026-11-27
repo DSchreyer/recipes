@@ -149,13 +149,24 @@
         </div>
 
         <div v-if="!loading && recipes.length === 0" class="find__empty">
-            <p class="find__empty-text">
-                {{ debouncedQuery ? `Kein Rezept zu „${debouncedQuery}“.` : 'Keine Rezepte mit diesen Filtern.' }}
-            </p>
-            <div class="find__empty-actions">
-                <v-btn variant="text" size="small" @click="reset()">{{ $t('Reset') }}</v-btn>
-                <v-btn variant="text" size="small" :to="{name: 'RecipeWishPage'}">Rezept wünschen</v-btn>
-            </div>
+            <!-- A failed request is not an empty result. During a deploy the API
+                 answers 502 for a minute, and "Kein Rezept zu „Köhler“" is then a
+                 false claim about the library rather than about the connection. -->
+            <template v-if="searchFailed">
+                <p class="find__empty-text">Die Suche kam nicht durch — vermutlich kurz keine Verbindung.</p>
+                <div class="find__empty-actions">
+                    <v-btn variant="text" size="small" @click="searchRecipes({page: page})">Nochmal</v-btn>
+                </div>
+            </template>
+            <template v-else>
+                <p class="find__empty-text">
+                    {{ debouncedQuery ? `Kein Rezept zu „${debouncedQuery}“.` : 'Keine Rezepte mit diesen Filtern.' }}
+                </p>
+                <div class="find__empty-actions">
+                    <v-btn variant="text" size="small" @click="reset()">{{ $t('Reset') }}</v-btn>
+                    <v-btn variant="text" size="small" :to="{name: 'RecipeWishPage'}">Rezept wünschen</v-btn>
+                </div>
+            </template>
         </div>
 
         <div class="find__pager">
@@ -269,6 +280,7 @@ const tableItemCount = ref(0)
 /** the line under the title: how many recipes the current search found, and which ones are on screen */
 const resultLabel = computed(() => {
     if (loading.value) return 'Suche läuft …'
+    if (searchFailed.value) return 'Suche fehlgeschlagen'
     const total = tableItemCount.value
     if (!total) return debouncedQuery.value ? `Nichts für „${debouncedQuery.value}“` : 'Keine Rezepte'
     const from = (page.value - 1) * pageSize.value + 1
@@ -299,6 +311,8 @@ function tileMeta(recipe: RecipeOverview): string {
 }
 
 const recipes = ref([] as RecipeOverview[])
+/** the last request failed, so an empty list says nothing about the library */
+const searchFailed = ref(false)
 const selectedCustomFilter = ref<null | CustomFilter>(null)
 const newFilterName = ref('')
 
@@ -337,6 +351,7 @@ onMounted(() => {
 function searchRecipes(options: VDataTableUpdateOptions) {
     let api = new ApiApi()
     loading.value = true
+    searchFailed.value = false
     hasFiltersApplied.value = false
     selectedItems.value = []
 
@@ -360,7 +375,8 @@ function searchRecipes(options: VDataTableUpdateOptions) {
         recipes.value = r.results
         tableItemCount.value = r.count
     }).catch(err => {
-        if (err.name !== 'AbortError' && err.cause.name !== 'AbortError') {
+        if (err.name !== 'AbortError' && err.cause?.name !== 'AbortError') {
+            searchFailed.value = true
             useMessageStore().addError(ErrorMessageType.FETCH_ERROR, err)
         }
     }).finally(() => {
