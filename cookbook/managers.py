@@ -484,7 +484,9 @@ class RecipeQuerySet(models.QuerySet):
             )
             return [Q(pk__in=fuzzy_match.values('pk'))], fuzzy_match
 
-        from django.db.models import Case, FloatField, Value, When
+        # Case/When/Value come from the module import: re-importing them here made
+        # `Value` a local name and the empty-score branch above died on it.
+        from django.db.models import FloatField
         match = Case(
             *[When(pk=pk, then=Value(float(score))) for pk, score in scores.items()],
             default=Value(0.0),
