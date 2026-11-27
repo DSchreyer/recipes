@@ -1156,6 +1156,8 @@ export interface ApiEnterpriseSocialRecipeListRequest {
     ratingGte?: number;
     ratingLte?: number;
     sortOrder?: string;
+    workingTimeGte?: number;
+    workingTimeLte?: number;
     timescooked?: number;
     timescookedGte?: number;
     timescookedLte?: number;
@@ -2256,6 +2258,8 @@ export interface ApiRecipeListRequest {
     ratingGte?: number;
     ratingLte?: number;
     sortOrder?: string;
+    workingTimeGte?: number;
+    workingTimeLte?: number;
     timescooked?: number;
     timescookedGte?: number;
     timescookedLte?: number;
@@ -7910,6 +7914,14 @@ export class ApiApi extends runtime.BaseAPI {
 
         if (requestParameters['ratingLte'] != null) {
             queryParameters['rating_lte'] = requestParameters['ratingLte'];
+        }
+
+        if (requestParameters['workingTimeGte'] != null) {
+            queryParameters['working_time_gte'] = requestParameters['workingTimeGte'];
+        }
+
+        if (requestParameters['workingTimeLte'] != null) {
+            queryParameters['working_time_lte'] = requestParameters['workingTimeLte'];
         }
 
         if (requestParameters['sortOrder'] != null) {
@@ -17780,6 +17792,14 @@ export class ApiApi extends runtime.BaseAPI {
 
         if (requestParameters['ratingLte'] != null) {
             queryParameters['rating_lte'] = requestParameters['ratingLte'];
+        }
+
+        if (requestParameters['workingTimeGte'] != null) {
+            queryParameters['working_time_gte'] = requestParameters['workingTimeGte'];
+        }
+
+        if (requestParameters['workingTimeLte'] != null) {
+            queryParameters['working_time_lte'] = requestParameters['workingTimeLte'];
         }
 
         if (requestParameters['sortOrder'] != null) {

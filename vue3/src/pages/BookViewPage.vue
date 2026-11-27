@@ -133,12 +133,19 @@ async function load() {
         }
 
         if (loaded.id) {
-            const entries = await api.apiRecipeBookEntryList({book: loaded.id, pageSize: 200})
-            entries.results.forEach(entry => push(entry.recipeContent))
+            for (let pageNo = 1; pageNo <= 20; pageNo++) {
+                const entries = await api.apiRecipeBookEntryList({book: loaded.id, pageSize: 100, page: pageNo})
+                entries.results.forEach(entry => push(entry.recipeContent))
+                if (!entries.next || entries.results.length === 0) break
+            }
         }
         if (loaded.filter && loaded.filter.id) {
-            const filtered = await api.apiRecipeList({filter: loaded.filter.id, pageSize: 500})
-            filtered.results.forEach(push)
+            // a page is capped at 100 recipes server-side; a book may be larger
+            for (let pageNo = 1; pageNo <= 20; pageNo++) {
+                const chunk = await api.apiRecipeList({filter: loaded.filter.id, pageSize: 100, page: pageNo})
+                chunk.results.forEach(push)
+                if (!chunk.next || chunk.results.length === 0) break
+            }
         }
 
         recipes.value = await mostCookedFirst(api, overviews)

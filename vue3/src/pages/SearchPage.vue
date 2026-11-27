@@ -375,8 +375,7 @@ function searchRecipes(options: VDataTableUpdateOptions) {
         hasFiltersApplied.value = true
     }
     if (chipFilters.value.time !== null) {
-        // added to the backend in this fork; the generated client predates the parameter
-        (searchParameters as unknown as Record<string, unknown>).workingTimeLte = chipFilters.value.time
+        searchParameters.workingTimeLte = chipFilters.value.time
         hasFiltersApplied.value = true
     }
     const axisIds = Object.values(chipFilters.value.axes).filter((id): id is number => id !== null)
@@ -1052,8 +1051,15 @@ const library = ref<RecipeOverview[]>([])
 async function loadLibrary() {
     try {
         const api = new ApiApi()
-        const all = await api.apiRecipeList({pageSize: 500})
-        library.value = all.results
+        // the server caps a page at 100, so a count over one page would undercount
+        // every chip ("Italien 10" for a node 38 recipes carry)
+        const gathered: RecipeOverview[] = []
+        for (let pageNo = 1; pageNo <= 20; pageNo++) {
+            const chunk = await api.apiRecipeList({pageSize: 100, page: pageNo})
+            gathered.push(...chunk.results)
+            if (!chunk.next || chunk.results.length === 0) break
+        }
+        library.value = gathered
     } catch (e) {
         // counts are a convenience — a failed load must not take the search down with it
     }

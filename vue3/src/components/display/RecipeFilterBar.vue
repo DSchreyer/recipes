@@ -165,7 +165,9 @@ const sortOptions = [
     {value: 'name', title: 'Alphabetisch'},
     {value: 'random', title: 'Zufällige Reihenfolge'},
 ]
-const sortLabel = computed(() => sortOptions.find(o => o.value === state.sort)?.title ?? 'Sortieren')
+const sortLabel = computed(() => state.sort
+    ? (sortOptions.find(o => o.value === state.sort)?.title ?? 'Sortieren')
+    : 'Sortieren')
 
 const ratingSteps = [4, 3.5, 3, 2.5, 2]
 const timeSteps = [15, 30, 45, 60, 90, 120]
@@ -174,7 +176,12 @@ const ratingLabel = computed(() => state.rating === null
     ? 'Bewertung'
     : `ab ${String(state.rating).replace('.', ',')} Sternen`)
 
-/** axes in the order a cook scans them, with the icon each one gets */
+/**
+ * The axes a cook scans for, in reading order. The library also carries `Rezepttyp`,
+ * `Quelle`, `Temperatur`, `Saison`, `Vorbereitung`, `Basis` and `Eigenschaft`; they are
+ * deliberately left out — thirteen chips already fill two rows, and a bar that needs
+ * three reads as a wall. Those remain reachable through the Filter panel.
+ */
 const AXIS_ORDER: { name: string, icon: string }[] = [
     {name: 'Herkunft', icon: 'fa-earth-europe'},
     {name: 'Rezeptkategorie', icon: 'fa-folder-open'},
@@ -183,20 +190,18 @@ const AXIS_ORDER: { name: string, icon: string }[] = [
     {name: 'Zubereitung', icon: 'fa-fire-burner'},
     {name: 'Methode', icon: 'fa-kitchen-set'},
     {name: 'Ernährung', icon: 'fa-leaf'},
-    {name: 'Ernaehrung', icon: 'fa-leaf'},
     {name: 'Aufwand', icon: 'fa-gauge-high'},
     {name: 'Hauptzutat', icon: 'fa-drumstick-bite'},
     {name: 'Beilage', icon: 'fa-bowl-rice'},
-    {name: 'Basis', icon: 'fa-wheat-awn'},
-    {name: 'Saison', icon: 'fa-sun'},
-    {name: 'Rezepttyp', icon: 'fa-tag'},
     {name: 'Fleisch', icon: 'fa-cow'},
     {name: 'Kohlenhydrate', icon: 'fa-bread-slice'},
     {name: 'Protein', icon: 'fa-egg'},
-    {name: 'Vorbereitung', icon: 'fa-boxes-stacked'},
-    {name: 'Eigenschaft', icon: 'fa-circle-info'},
-    {name: 'Quelle', icon: 'fa-book-open'},
 ]
+
+/** the same shelf under two spellings is one shelf */
+function canonicalAxis(axis: string): string {
+    return axis === 'Ernaehrung' ? 'Ernährung' : axis
+}
 
 interface AxisValue {
     id: number
@@ -228,7 +233,7 @@ const axes = computed(() => {
             if (!label || !label.includes('::')) continue
             const path = label.split('::').filter(Boolean)
             if (path.length < 2) continue
-            const axis = path[0]
+            const axis = canonicalAxis(path[0])
             for (let depth = 2; depth <= path.length; depth++) {
                 const node = path.slice(0, depth).join('::')
                 if (!perAxis.has(axis)) perAxis.set(axis, new Map())
