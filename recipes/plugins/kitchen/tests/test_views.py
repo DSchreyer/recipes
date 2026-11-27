@@ -133,6 +133,32 @@ def test_ingredient_less_page_is_not_a_food_match(kitchen):
     assert 'Nachschlagewerk' not in body
 
 
+def test_the_search_box_finds_a_recipe_by_name(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Köhler-Curry mit Kokosmilch', ['Hauptzutat::Fisch'])
+    _kitchen(space, 'Kartoffelsuppe', ['Beilage::Kartoffel'])
+
+    body = client.get(URL, {'q': 'köhler'}).content.decode()
+    assert 'Köhler-Curry mit Kokosmilch' in body
+    assert 'Kartoffelsuppe' not in body
+
+    # a word that names nothing says so instead of showing the whole library
+    nothing = client.get(URL, {'q': 'zzz'}).content.decode()
+    assert 'Nichts heißt' in nothing
+
+
+def test_a_name_word_and_a_chip_narrow_together(kitchen):
+    client, space = kitchen
+    _kitchen(space, 'Köhler-Curry', ['Hauptzutat::Fisch'])
+    _kitchen(space, 'Köhler mit Beurre Blanc', ['Hauptzutat::Fisch'])
+
+    both = client.get(URL, {'q': 'köhler', 'protein': 'Hauptzutat::Fisch'}).content.decode()
+    assert 'Köhler-Curry' in both and 'Beurre Blanc' in both
+
+    dead = client.get(URL, {'q': 'köhler', 'carb': 'Beilage::Kartoffel'}).content.decode()
+    assert 'Nichts heißt' in dead
+
+
 def test_recipe_using_none_of_my_food_is_not_shown(kitchen):
     client, space = kitchen
     _kitchen(space, 'Cacio e Pepe', foods=['Pecorino Romano', 'Spaghetti'])
@@ -188,9 +214,11 @@ def test_a_star_creates_a_dated_cook_log(kitchen):
     })
 
     assert response.status_code == 302
-    assert response['Location'].endswith('geloggt=1')
+    assert 'carb=Beilage' in response['Location']
+    assert 'geloggt' not in response['Location']
     with scopes_disabled():
         log = CookLog.objects.get()
+    assert f'„{dish.name}“ geloggt.' in client.get(response['Location']).content.decode()
     assert log.recipe_id == dish.id
     assert log.rating == 4
     assert log.comment == 'mehr Muskat'
@@ -309,10 +337,9 @@ def test_saving_on_the_default_page_does_not_change_the_page(kitchen, monkeypatc
         _proven(space, name)
     _kitchen(space, 'Neuland')
 
-    # The redirect after a save carries `geloggt=1`, which is a flash, not a
-    # question: the page must not turn into a different one just because a
-    # card was rated.
-    body = client.get(URL, {'geloggt': '1'}).content.decode()
+    # The confirmation is a message now, not a query flag: the page must not
+    # turn into a different one just because a card was rated.
+    body = client.get(URL).content.decode()
 
     assert 'Neuland' not in body
     assert 'href="?minrating=0"' in body
@@ -390,7 +417,8 @@ def test_the_query_string_survives_the_redirect(kitchen):
 
     assert 'carb=Beilage' in response['Location']
     assert 'seed=abc' in response['Location']
-    assert response['Location'].endswith('geloggt=1')
+    assert 'geloggt' not in response['Location']
+    assert f'„{dish.name}“ geloggt.' in client.get(response['Location']).content.decode()
 
 
 def test_a_quarter_star_is_stored_as_given(kitchen):
@@ -474,7 +502,7 @@ def test_the_nudge_rates_the_cook_that_happened(kitchen):
                            {'action': 'save', 'rating': '4.25', 'next': HISTORY})
 
     assert response.status_code == 302
-    assert response['Location'].endswith(f'/api/plugins/kitchen/gekocht/?gespeichert=1#cook-{newest.pk}')
+    assert response['Location'].endswith(f'/api/plugins/kitchen/gekocht/#cook-{newest.pk}')
     with scopes_disabled():
         assert CookLog.objects.filter(recipe=dish).count() == 2
         assert float(CookLog.objects.get(pk=newest.pk).rating) == 4.25
@@ -493,13 +521,28 @@ def test_card_badge_marks_a_twice_cooked_never_rated_recipe(kitchen):
     assert body.count('class="badge badge-warning badge-nudge"') == 1
 
 
-def test_a_saved_cook_is_visible_on_the_cooked_page(kitchen):
+def test_a_saved_cook_says_which_dish_was_saved(kitchen):
     client, space = kitchen
-    _cooked(space, _kitchen(space, 'Linseneintopf'), rating=None, times=2)
+    log = _one_cook(space, _kitchen(space, 'Linseneintopf'), rating=None)
 
-    body = client.get(HISTORY, {'geloggt': '1'}).content.decode()
+    response = client.post(
+        reverse('kitchen:cooked_entry', args=[log.pk]),
+        {'action': 'save', 'rating': '4', 'next': HISTORY}, follow=True,
+    )
 
-    assert 'Gekocht gespeichert.' in body
+    assert '„Linseneintopf“ gespeichert.' in response.content.decode()
+
+
+def test_a_confirmation_is_shown_once(kitchen):
+    """A reload is not a second save, so it must not repeat the message."""
+    client, space = kitchen
+    log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
+
+    client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                {'action': 'save', 'rating': '5', 'next': HISTORY}, follow=True)
+    again = client.get(HISTORY).content.decode()
+
+    assert '„Kartoffelsuppe“ gespeichert.' not in again
 
 
 # --- the funnel: shelf -> country -> class -> carb ----------------------------
@@ -680,7 +723,7 @@ def test_a_cook_can_be_rated_renoted_and_redated(kitchen):
     )
 
     assert response.status_code == 302
-    assert response['Location'].endswith(f'/gekocht/?gespeichert=1#cook-{log.pk}')
+    assert response['Location'].endswith(f'/gekocht/#cook-{log.pk}')
     with scopes_disabled():
         log.refresh_from_db()
     assert float(log.rating) == 4.25
@@ -724,7 +767,8 @@ def test_a_cook_can_be_deleted(kitchen):
     response = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
                            {'action': 'delete', 'next': HISTORY})
 
-    assert response['Location'].endswith('/gekocht/?geloescht=1')
+    assert response['Location'].endswith('/gekocht/')
+    assert '„Kartoffelsuppe“ gelöscht.' in client.get(response['Location']).content.decode()
     with scopes_disabled():
         assert CookLog.objects.count() == 0
 
@@ -821,28 +865,37 @@ def test_every_row_carries_its_own_edit_form(kitchen):
     assert 'name="action" value="delete"' in body
 
 
-def test_the_three_confirmations_are_visible(kitchen):
+def test_every_confirmation_names_the_dish(kitchen):
     client, space = kitchen
+    dish = _kitchen(space, 'Kartoffelsuppe')
+    log = _one_cook(space, dish, rating=4)
 
-    for key, text in (
-        ('geloggt', 'Gekocht gespeichert.'),
-        ('gespeichert', 'Eintrag geändert.'),
-        ('geloescht', 'Eintrag gelöscht.'),
-    ):
-        assert text in client.get(HISTORY, {key: '1'}).content.decode()
+    saved = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                        {'action': 'save', 'rating': '4.25', 'next': HISTORY}, follow=True)
+    cooked = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                         {'action': 'cook', 'next': HISTORY}, follow=True)
+    removed = client.post(reverse('kitchen:cooked_entry', args=[log.pk]),
+                          {'action': 'delete', 'next': HISTORY}, follow=True)
+
+    assert '„Kartoffelsuppe“ gespeichert.' in saved.content.decode()
+    assert '„Kartoffelsuppe“ noch einmal gekocht.' in cooked.content.decode()
+    assert '„Kartoffelsuppe“ gelöscht.' in removed.content.decode()
 
 
 def test_a_new_confirmation_replaces_the_old_one(kitchen):
-    """The page must not say "changed" while it is reporting a delete."""
+    """The page must not say "saved" while it is reporting a delete."""
     client, space = kitchen
     log = _one_cook(space, _kitchen(space, 'Kartoffelsuppe'), rating=4)
 
     response = client.post(
         reverse('kitchen:cooked_entry', args=[log.pk]),
-        {'action': 'delete', 'next': HISTORY + '?gespeichert=1&by=daniel'},
+        {'action': 'delete', 'next': HISTORY + '?by=daniel'}, follow=True,
     )
 
-    assert response['Location'].endswith('/gekocht/?by=daniel&geloescht=1')
+    body = response.content.decode()
+    assert response.redirect_chain[-1][0].endswith('/gekocht/?by=daniel')
+    assert '„Kartoffelsuppe“ gelöscht.' in body
+    assert 'gespeichert.' not in body
 
 # --- what the page says back -------------------------------------------------
 

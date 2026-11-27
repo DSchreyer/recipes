@@ -13,8 +13,9 @@ from __future__ import annotations
 import secrets
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
-from urllib.parse import parse_qsl, urlencode
+from urllib.parse import urlencode
 
+from django.contrib import messages
 from django.db.models import Avg, Count, Max, Q
 from django.http import Http404
 from django.shortcuts import redirect
@@ -214,6 +215,22 @@ def build(request) -> dict:
         note, active = drop_narrowest(sets, active)
         axes = {key: active.get(key, "") for key in AXES}
         ids = match.recipe_ids(sets, active)
+
+    # A word in the search box narrows the same set the chips narrow. It is added
+    # after the "nothing fits" fallback, because the fallback may only drop a chip
+    # axis, never the word the user typed.
+    term = params.get("q", "").strip()
+    if term:
+        named = match.recipe_ids_by_name(term)
+        if active:
+            narrowed = ids & named
+            if not narrowed:
+                note = f"Nichts heißt „{term}“ mit diesen Filtern."
+            ids = narrowed
+        else:
+            ids = named
+            if not named:
+                note = f"Nichts heißt „{term}“."
 
     limit = match.MAX_CARDS if params.get("n") == "12" else match.DEFAULT_CARDS
     allow = 2 if params.get("missing") == "2" else 1
@@ -457,7 +474,6 @@ class PickerView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(build(self.request))
-        context["saved"] = bool(self.request.GET.get("geloggt"))
         return context
 
     def post(self, request, *args, **kwargs):
@@ -484,25 +500,8 @@ class PickerView(TemplateView):
             comment=comment,
             created_at=_when(request.POST.get("date")),
         )
-        return _flash(_back(request, "kitchen:picker"), "geloggt")
-
-
-FLASH = ("geloggt", "gespeichert", "geloescht")
-
-
-def _flash(target: str, key: str, anchor: str = ""):
-    """Back to the page the form was on, with one word of confirmation.
-
-    Earlier confirmations are dropped first: a page that has just deleted an
-    entry must not still be saying that it changed one. `anchor` scrolls the
-    browser to the row that changed, so the confirmation is the corrected
-    value itself rather than a green bar somewhere above it.
-    """
-    base, _, query = target.partition("?")
-    params = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k not in FLASH]
-    params.append((key, "1"))
-    url = f"{base}?{urlencode(params)}"
-    return redirect(f"{url}#{anchor}" if anchor else url)
+        messages.success(request, f"„{recipe.name}“ geloggt.")
+        return redirect(_back(request, "kitchen:picker"))
 
 
 def _back(request, fallback: str) -> str:
@@ -751,9 +750,8 @@ class CookedView(TemplateView):
             rating_options=rating_options(),
             # Three words of confirmation, one per write, so a change is never
             # silent on the page it returns to.
-            saved=bool(self.request.GET.get("geloggt")),
-            updated=bool(self.request.GET.get("gespeichert")),
-            removed=bool(self.request.GET.get("geloescht")),
+            # The confirmation is a Django message: it has to name the dish, and
+            # a dish name does not belong in the URL of a page you can reload.
         )
         return context
 
@@ -777,8 +775,12 @@ class CookedEntryView(View):
         action = request.POST.get("action", "save")
 
         if action == "delete":
+            name = log.recipe.name
             log.delete()
-            return _flash(target, "geloescht")
+            # Nothing is left on the page to look at, so the message is the whole
+            # confirmation: it has to say what is gone.
+            messages.success(request, f"„{name}“ gelöscht.")
+            return redirect(target)
         if action == "cook":
             # "Nochmal gekocht" has its own form and always means today: it must
             # never pick up a date or a note typed into the form above it.
@@ -787,7 +789,8 @@ class CookedEntryView(View):
                 created_by=request.user,
                 space=log.recipe.space,
             )
-            return _flash(target, "geloggt", f"cook-{again.pk}")
+            messages.success(request, f"„{again.recipe.name}“ noch einmal gekocht.")
+            return redirect(f"{target}#cook-{again.pk}")
 
         # Only the fields the form carried change: a rating from the nudge must
         # not wipe the note that is already there.
@@ -806,7 +809,8 @@ class CookedEntryView(View):
             log.save(update_fields=changed)
         # Land on the row that changed, not at the top of the page: the point of
         # a correction is seeing the corrected value in place.
-        return _flash(target, "gespeichert", f"cook-{log.pk}")
+        messages.success(request, f"„{log.recipe.name}“ gespeichert.")
+        return redirect(f"{target}#cook-{log.pk}")
 
 
 __all__ = [

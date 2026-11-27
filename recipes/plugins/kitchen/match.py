@@ -215,6 +215,19 @@ def recipe_ids(sets: dict[int, frozenset[str]], axes: dict[str, str]) -> set[int
     return {recipe_id for recipe_id, names in sets.items() if matches(names, axes)}
 
 
+def recipe_ids_by_name(term: str) -> set[int]:
+    """Recipe ids whose name contains `term`, scoped to the active space.
+
+    The search box used to answer with ingredients only: typing "Köhler" offered
+    the fish and left the cards untouched, because the name of a dish was never
+    part of the question. It is the first thing anyone types.
+    """
+    term = term.strip()
+    if not term:
+        return set()
+    return set(Recipe.objects.filter(name__icontains=term).values_list("id", flat=True))
+
+
 def subregions(shelf: str, country: str) -> list[str]:
     """The `Herkunft::<Shelf>::<Country>::<Region>` names under one country."""
     def found(prefix: str) -> list[str]:

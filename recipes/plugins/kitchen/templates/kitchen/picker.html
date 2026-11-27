@@ -16,9 +16,6 @@
             {% if note %}
                 <div class="alert alert-info py-2">{{ note }}</div>
             {% endif %}
-            {% if saved %}
-                <div class="alert alert-success py-2">Gekocht gespeichert.</div>
-            {% endif %}
         </div>
 
         <div id="applied" class="applied">
@@ -78,7 +75,7 @@
                 {% endfor %}
                 <div class="input-group input-group-sm">
                     <input type="text" name="q" value="{{ q }}" class="form-control"
-                           placeholder="Zutat suchen …" aria-label="Zutat suchen">
+                           placeholder="Rezept oder Zutat suchen …" aria-label="Rezept oder Zutat suchen">
                     <div class="input-group-append">
                         <button class="btn btn-outline-secondary" type="submit">suchen</button>
                     </div>
