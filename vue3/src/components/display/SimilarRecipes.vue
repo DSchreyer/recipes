@@ -57,7 +57,7 @@ function load() {
         keywordsOr: ids,
         pageSize: 13,
         // the ones the household actually cooks, not the newest import
-        sortOrder: '-timescooked',
+        sortOrder: '-times_cooked',
     }).then((response) => {
         const others = (response.results ?? []).filter(recipe => recipe.id !== id)
         picks.value = others.slice(0, 4)

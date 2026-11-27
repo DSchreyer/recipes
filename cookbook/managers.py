@@ -74,6 +74,20 @@ class RecipeQuerySet(models.QuerySet):
             distinct=True,
         ))
 
+    def with_times_cooked(self, user, space):
+        """How often this household cooked a recipe.
+
+        `times_cooked` is an advertised sort key, but nothing annotated it, so
+        `?sort_order=-times_cooked` answered 500 instead of the most-cooked dishes.
+        """
+        if self._has_annotation('times_cooked'):
+            return self
+        return self.annotate(times_cooked=Count(
+            'cooklog__pk',
+            filter=Q(cooklog__created_by=user, cooklog__space=space),
+            distinct=True,
+        ))
+
     def with_last_viewed(self, user, space):
         if self._has_annotation('lastviewed'):
             return self

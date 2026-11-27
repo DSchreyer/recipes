@@ -50,6 +50,7 @@ from recipe_scrapers import scrape_html
 from recipe_scrapers._exceptions import NoSchemaFoundInWildMode
 from requests.exceptions import MissingSchema
 from rest_framework import decorators, status, viewsets
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework import mixins
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.decorators import api_view, permission_classes
@@ -1832,7 +1833,11 @@ class RecipeViewSet(LoggingMixin, viewsets.ModelViewSet, DeleteRelationMixing):
         params = {x: self.request.GET.get(x) if len({**self.request.GET}[x]) == 1 else self.request.GET.getlist(x) for x
                   in list(self.request.GET)}
         search = RecipeSearch(self.request, **params)
-        self.queryset = search.get_queryset(self.queryset).prefetch_related('keywords', 'cooklog_set')
+        try:
+            self.queryset = search.get_queryset(self.queryset).prefetch_related('keywords', 'cooklog_set')
+        except ValueError as exc:
+            # an unknown sort key is bad input, not a broken server
+            raise DRFValidationError({'sort_order': str(exc)})
         return self.queryset
 
     def list(self, request, *args, **kwargs):
