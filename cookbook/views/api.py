@@ -28,8 +28,7 @@ from django.core.cache import caches
 from django.core.exceptions import FieldError, ValidationError
 from django.core.files import File
 from django.db import DEFAULT_DB_ALIAS
-from django.db.models import Case, Count, Exists, OuterRef, ProtectedError, Q, Subquery, Value, When, QuerySet
-from django.db.models import Prefetch
+from django.db.models import Case, Count, Exists, OuterRef, Prefetch, ProtectedError, Q, Subquery, Value, When, QuerySet
 from django.db.models.fields import BooleanField
 from django.db.models.fields.related import ForeignObjectRel
 from django.db.models.functions import Coalesce, Lower
@@ -1513,7 +1512,14 @@ class MealPlanViewSet(LoggingMixin, viewsets.ModelViewSet):
         if meal_type:
             queryset = queryset.filter(meal_type__in=meal_type)
 
-        return queryset
+        # The plan draws a recipe tile, and a tile that was cooked carries the
+        # household's rating. Without the annotations the nested RecipeOverview
+        # reports rating/last_cooked as null, because those are annotations on the
+        # recipe queryset and not model columns.
+        return queryset.prefetch_related(
+            Prefetch('recipe', queryset=Recipe.objects.with_rating(self.request.user)
+                     .with_last_cooked(self.request.user, self.request.space))
+        )
 
     def get_serializer_class(self):
         if self.action == 'ical':

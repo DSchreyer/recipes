@@ -15,6 +15,8 @@
                        <i class="fas fa-shopping-cart fa-xs float-left" v-if="mealPlan.shopping"/>
                         {{ itemTitle }}
                     </span>
+                    <rating-stars v-if="mealPlan.recipe?.rating" :value="mealPlan.recipe.rating" size="sm"
+                                  class="cv-item__rating"></rating-stars>
                 </div>
             </div>
             <model-edit-dialog model="MealPlan" :item="mealPlan" @delete="(args: MealPlan) => emit('delete', args)"></model-edit-dialog>
@@ -28,6 +30,7 @@ import {computed, PropType} from "vue";
 import {IMealPlanNormalizedCalendarItem} from "@/types/MealPlan";
 import RecipeImage from "@/components/display/RecipeImage.vue";
 import ModelEditDialog from "@/components/dialogs/ModelEditDialog.vue";
+import RatingStars from "@/components/display/RatingStars.vue";
 import {MealPlan} from "@/openapi";
 
 const emit = defineEmits({
@@ -64,6 +67,13 @@ const itemTitle = computed(() => {
 </script>
 
 <style scoped>
+/* Rendered at .72rem because the calendar block is narrow: the star row has to
+   sit under a three-line title without pushing the block out of its slot. */
+.cv-item__rating {
+    font-size: .72rem;
+    margin-top: 2px;
+    color: rgba(var(--v-theme-on-surface), .7);
+}
 
 .two-line-text {
     display: -webkit-box;

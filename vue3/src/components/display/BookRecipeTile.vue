@@ -7,8 +7,13 @@
         </div>
 
         <div class="recipe-tile__body">
-            <div v-if="meta" class="recipe-tile__meta">{{ meta }}</div>
+            <div class="recipe-tile__meta">{{ meta }}</div>
             <div class="recipe-tile__name">{{ recipe.name }}</div>
+            <!-- A cooked recipe carries the household's verdict; one that was never
+                 cooked has none to show, so the tile stays as quiet as before. -->
+            <div class="recipe-tile__rating">
+                <rating-stars v-if="recipe.rating" :value="recipe.rating" size="sm" chip></rating-stars>
+            </div>
             <div class="recipe-tile__blurb">{{ recipe.description }}</div>
             <div class="recipe-tile__foot">
                 <v-chip v-for="chip in chips" :key="chip.axis" size="x-small" label variant="tonal"
@@ -47,6 +52,7 @@ import {useRouter} from "vue-router";
 import {RecipeOverview} from "@/openapi";
 import RecipeImage from "@/components/display/RecipeImage.vue";
 import {axisChips, groupedKeywords} from "@/utils/recipe_axes";
+import RatingStars from "@/components/display/RatingStars.vue";
 
 const props = defineProps<{ recipe: RecipeOverview, meta?: string }>()
 
@@ -116,6 +122,10 @@ function open() {
 }
 
 .recipe-tile__meta {
+    /* one line box whether or not there is text: an empty meta row used to be
+       5px shorter than "vor 4 Tagen gekocht", so the titles in a row drifted */
+    min-height: 1.2em;
+    line-height: 1.2em;
     font-size: .7rem;
     font-weight: 600;
     letter-spacing: .06em;
@@ -132,6 +142,11 @@ function open() {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+.recipe-tile__rating {
+    min-height: 1.6em;
+    margin-top: 2px;
 }
 
 .recipe-tile__blurb {
@@ -152,8 +167,9 @@ function open() {
     gap: 4px;
     margin-top: auto;
     padding-top: 6px;
-    height: 52px;
-    overflow: hidden;
+    /* a fixed 52px cut the second chip row in half on narrow tiles, which read as
+       a grey pill with no text; grid stretch keeps the cards in a row equal */
+    min-height: 52px;
 }
 
 /* always on its own line, so every tile in a row is exactly as tall */

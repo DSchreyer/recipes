@@ -1,153 +1,168 @@
 <template>
-    <v-container>
-        <v-row>
-            <v-col cols="12" md="6" offset-md="3">
-                <v-text-field :label="$t('Search')"
-                              v-model="query"
-                              :loading="loading"
-                              @keydown.enter="flushQuery()"
-                              @click:clear="resetQuery()"
-                              clearable hide-details>
-                    <template v-slot:append>
-                        <v-badge bordered :offset-x="5" :offset-y="5" color="secondary" v-model="hasFiltersApplied">
-                            <v-btn @click="panel ='search' " v-if="panel == ''" color="primary" icon>
-                                <i class="fa-solid fa-caret-down"></i></v-btn>
-                            <v-btn @click="panel ='' " v-if="panel == 'search'" color="primary" icon><i class="fa-solid fa-caret-up"></i></v-btn>
-                        </v-badge>
-                    </template>
-                </v-text-field>
-            </v-col>
-        </v-row>
-        <v-row dense>
-            <v-col>
-                <v-expansion-panels v-model="panel">
-                    <v-expansion-panel value="search">
-                        <v-expansion-panel-text>
-                            <v-form :disabled="loading" class="mt-4">
-
-                                <div v-for="filter in Object.values(filters)" :key="filter.id">
-                                    <template v-if="filter.enabled">
-                                        <component :="getPropsFromFilter(filter)" :is="filter.is" density="compact" v-model:modelValue="filter.modelValue">
-                                            <template #append>
-                                                <v-btn icon="fa-solid fa-times" size="small" variant="plain"
-                                                       @click="filter.enabled = false; filter.modelValue = filter.default"></v-btn>
-                                            </template>
-                                        </component>
-                                    </template>
-                                </div>
-
-                                <v-divider class="mt-2 mb-2"></v-divider>
-
-                                <v-autocomplete :items="availableFilters"
-                                                @update:model-value="(item:string) =>{ filters[item].enabled = true; nextTick(() => {addFilterSelect = null})}" density="compact"
-                                                :label="$t('AddFilter')" v-model="addFilterSelect"></v-autocomplete>
-
-                                <v-model-select model="CustomFilter" v-model="selectedCustomFilter" density="compact">
-                                    <template #append>
-                                        <v-btn icon="fa-solid fa-upload" color="warning" :disabled="selectedCustomFilter == null"
-                                               @click="loadSelectedCustomFilter()"></v-btn>
-                                        <v-btn icon="$save" class="ms-1" color="save" @click="saveCustomFilter()"></v-btn>
-                                    </template>
-                                </v-model-select>
-                            </v-form>
-                            <v-row>
-                                <v-col cols="6">
-                                    <v-select :label="$t('View')" v-model="useUserPreferenceStore().deviceSettings.search_viewMode"
-                                              :items="[{title: $t('Table'), value: 'table'}, {title: $t('Cards'), value: 'grid'},]" density="compact"></v-select>
-                                </v-col>
-                                <v-col cols="6">
-                                    <v-select class="float-right" :label="$t('PerPage')" v-model="pageSize" :items="[10,25,50,100]" density="compact"
-                                              width="100%"></v-select>
-                                </v-col>
-                            </v-row>
-
-                        </v-expansion-panel-text>
-
-                        <v-card-actions v-if="panel == 'search'">
-                            <v-btn @click="reset()" prepend-icon="$reset">{{ $t('Reset') }}</v-btn>
-                            <v-btn @click="searchRecipes({page: 1})" prepend-icon="$search">{{ $t('Search') }}</v-btn>
-                        </v-card-actions>
-                    </v-expansion-panel>
-                </v-expansion-panels>
-
-            </v-col>
-        </v-row>
-
-        <v-row v-if="recipes.length > 0 && useUserPreferenceStore().deviceSettings.search_viewMode == 'table'">
-            <v-col>
-                <v-card>
-                    <v-data-table-server
-                        v-model="selectedItems"
-                        return-object
-                        @update:options="searchRecipes"
-                        :loading="loading"
-                        :items="recipes"
-                        :headers="tableHeaders"
-                        :page="page"
-                        :items-per-page="pageSize"
-                        :items-length="tableItemCount"
-                        @click:row="handleRowClick"
-                        disable-sort
-                        show-select
-                        hide-default-footer
-                    >
-                        <template v-slot:header.action v-if="selectedItems.length > 0">
-                            <v-btn icon="fa-solid fa-ellipsis-v" variant="plain" color="info">
-                                <v-icon icon="fa-solid fa-ellipsis-v"></v-icon>
-                                <v-menu activator="parent" close-on-content-click>
-                                    <v-list density="compact" class="pt-1 pb-1" activatable>
-                                        <v-list-item prepend-icon="$edit" @click="batchEditDialog = true">
-                                            {{ $t('BatchEdit') }}
-                                        </v-list-item>
-                                        <v-list-item prepend-icon="$delete" @click="batchDeleteDialog = true">
-                                            {{ $t('Delete_All') }}
-                                        </v-list-item>
-                                    </v-list>
-                                </v-menu>
-                            </v-btn>
-                        </template>
-
-                        <template #item.image="{item}">
-                            <v-avatar :image="item.image" size="x-large" class="mt-1 mb-1" v-if="item.image"></v-avatar>
-                            <v-avatar color="primary" variant="tonal" size="x-large" class="mt-1 mb-1" v-else>
-                                <random-icon></random-icon>
-                            </v-avatar>
-                        </template>
-
-                        <template #item.keywords="{item}">
-                            <keywords-bar :keywords="item.keywords"></keywords-bar>
-                        </template>
-
-                        <template #item.action="{item}">
-                            <recipe-context-menu :recipe="item"></recipe-context-menu>
-                        </template>
-                    </v-data-table-server>
-                </v-card>
-            </v-col>
-        </v-row>
-
-        <template v-if="recipes.length > 0 && useUserPreferenceStore().deviceSettings.search_viewMode == 'grid'">
-            <v-row>
-                <v-col cols="6" md="4" v-for="r in recipes" :key="r.id" class="pa-0">
-                    <recipe-card :recipe="r"></recipe-card>
-                </v-col>
-
-            </v-row>
-
-        </template>
-        <v-row>
-            <v-col cols="12" md="6" offset-md="3" class="text-center">
-                <v-pagination v-model="page" :length="Math.ceil(tableItemCount/pageSize)"
-                              @update:modelValue="searchRecipes({page: page})" class="ms-2 me-2" size="small"
-                              v-if="filters['sortOrder'].modelValue != 'random'"
-                ></v-pagination>
-                <v-btn size="x-large" rounded="xl" prepend-icon="fa-solid fa-dice" variant="tonal" v-if="filters['sortOrder'].modelValue == 'random'"
-                       @click="searchRecipes({page: 1})">
-                    {{ $t('Random Recipes') }}
+    <v-container class="find" fluid>
+        <header class="find__head">
+            <div>
+                <h1 class="find__title">Suchen</h1>
+                <p class="find__sub">{{ resultLabel }}</p>
+            </div>
+            <div class="find__head-actions">
+                <v-btn variant="text" prepend-icon="fa-solid fa-sliders"
+                       @click="panel = panel === 'search' ? '' : 'search'">
+                    Filter
+                    <v-badge v-if="activeFilterCount" :content="activeFilterCount" color="primary" inline class="ms-1"></v-badge>
                 </v-btn>
-            </v-col>
-        </v-row>
+            </div>
+        </header>
 
+        <v-text-field v-model="query"
+                      :label="$t('Search')"
+                      :loading="loading"
+                      prepend-inner-icon="$search"
+                      variant="outlined"
+                      density="comfortable"
+                      rounded="lg"
+                      bg-color="surface"
+                      hide-details
+                      clearable
+                      class="find__search"
+                      @keydown.enter="flushQuery()"
+                      @click:clear="resetQuery()"></v-text-field>
+
+        <section v-if="panel === 'search'" class="find__panel">
+            <v-form :disabled="loading">
+                <div v-for="filter in Object.values(filters)" :key="filter.id">
+                    <template v-if="filter.enabled">
+                        <component :is="filter.is" v-bind="getPropsFromFilter(filter)"
+                                   density="compact" v-model:modelValue="filter.modelValue" class="find__filter">
+                            <template #append>
+                                <v-btn icon="fa-solid fa-times" size="small" variant="plain" :aria-label="$t('Remove')"
+                                       @click="filter.enabled = false; filter.modelValue = filter.default"></v-btn>
+                            </template>
+                        </component>
+                    </template>
+                </div>
+
+                <div class="find__panel-row">
+                    <v-autocomplete :items="availableFilters"
+                                    :label="$t('AddFilter')"
+                                    density="compact"
+                                    v-model="addFilterSelect"
+                                    @update:model-value="(item:string) =>{ filters[item].enabled = true; nextTick(() => {addFilterSelect = null})}"></v-autocomplete>
+                </div>
+
+                <div class="find__panel-row">
+                    <v-model-select model="CustomFilter" v-model="selectedCustomFilter" density="compact" :label="$t('SavedSearch')">
+                        <template #append>
+                            <v-btn icon="fa-solid fa-upload" color="warning" variant="text" size="small"
+                                   :disabled="selectedCustomFilter == null" :aria-label="$t('Load')"
+                                   @click="loadSelectedCustomFilter()"></v-btn>
+                            <v-btn icon="$save" color="save" variant="text" size="small" :aria-label="$t('Save')"
+                                   @click="saveCustomFilter()"></v-btn>
+                        </template>
+                    </v-model-select>
+                </div>
+            </v-form>
+
+            <div class="find__panel-foot">
+                <v-select :label="$t('PerPage')" v-model="pageSize" :items="[10,25,50,100]"
+                          density="compact" variant="underlined" hide-details class="find__perpage"></v-select>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" @click="reset()" prepend-icon="$reset">{{ $t('Reset') }}</v-btn>
+                <v-btn variant="flat" color="primary" @click="searchRecipes({page: 1})" prepend-icon="$search">{{ $t('Search') }}</v-btn>
+            </div>
+        </section>
+
+        <div class="find__toolbar">
+            <v-select :items="filters.sortOrder.items"
+                      v-model="filters.sortOrder.modelValue"
+                      :label="$t('sort_by')"
+                      density="compact"
+                      variant="outlined"
+                      hide-details
+                      class="find__sort"></v-select>
+            <v-btn-toggle v-model="viewMode" density="compact" variant="outlined" divided mandatory class="find__view">
+                <v-btn value="grid" icon="fa-solid fa-grip" :aria-label="$t('Cards')"></v-btn>
+                <v-btn value="table" icon="fa-solid fa-list" :aria-label="$t('Table')"></v-btn>
+            </v-btn-toggle>
+        </div>
+
+        <v-card v-if="recipes.length > 0 && viewMode === 'table'" class="find__table">
+            <v-data-table-server
+                v-model="selectedItems"
+                return-object
+                @update:options="searchRecipes"
+                :loading="loading"
+                :items="recipes"
+                :headers="tableHeaders"
+                :page="page"
+                :items-per-page="pageSize"
+                :items-length="tableItemCount"
+                @click:row="handleRowClick"
+                disable-sort
+                show-select
+                hide-default-footer
+            >
+                <template v-slot:header.action v-if="selectedItems.length > 0">
+                    <v-btn icon="fa-solid fa-ellipsis-v" variant="plain" color="info" :aria-label="$t('Actions')">
+                        <v-menu activator="parent" close-on-content-click>
+                            <v-list density="compact" class="pt-1 pb-1" activatable>
+                                <v-list-item prepend-icon="$edit" @click="batchEditDialog = true">
+                                    {{ $t('BatchEdit') }}
+                                </v-list-item>
+                                <v-list-item prepend-icon="$delete" @click="batchDeleteDialog = true">
+                                    {{ $t('Delete_All') }}
+                                </v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </v-btn>
+                </template>
+
+                <template #item.image="{item}">
+                    <v-avatar :image="item.image" size="x-large" class="mt-1 mb-1" v-if="item.image"></v-avatar>
+                    <v-avatar color="primary" variant="tonal" size="x-large" class="mt-1 mb-1" v-else>
+                        <random-icon></random-icon>
+                    </v-avatar>
+                </template>
+
+                <template #item.rating="{item}">
+                    <rating-stars v-if="item.rating" :value="item.rating" size="sm" chip></rating-stars>
+                    <span v-else class="find__muted">–</span>
+                </template>
+
+                <template #item.keywords="{item}">
+                    <keywords-bar :keywords="item.keywords"></keywords-bar>
+                </template>
+
+                <template #item.action="{item}">
+                    <recipe-context-menu :recipe="item"></recipe-context-menu>
+                </template>
+            </v-data-table-server>
+        </v-card>
+
+        <div v-if="recipes.length > 0 && viewMode === 'grid'" class="find__grid">
+            <book-recipe-tile v-for="r in recipes" :key="r.id" :recipe="r" :meta="tileMeta(r)"></book-recipe-tile>
+        </div>
+
+        <div v-if="!loading && recipes.length === 0" class="find__empty">
+            <p class="find__empty-text">
+                {{ debouncedQuery ? `Kein Rezept zu „${debouncedQuery}“.` : 'Keine Rezepte mit diesen Filtern.' }}
+            </p>
+            <div class="find__empty-actions">
+                <v-btn variant="text" size="small" @click="reset()">{{ $t('Reset') }}</v-btn>
+                <v-btn variant="text" size="small" :to="{name: 'RecipeWishPage'}">Rezept wünschen</v-btn>
+            </div>
+        </div>
+
+        <div class="find__pager">
+            <v-pagination v-model="page" :length="Math.ceil(tableItemCount/pageSize)"
+                          @update:modelValue="searchRecipes({page: page})" size="small"
+                          v-if="recipes.length > 0 && filters['sortOrder'].modelValue != 'random'"></v-pagination>
+            <v-btn rounded="xl" prepend-icon="fa-solid fa-dice" variant="tonal" size="large"
+                   v-if="recipes.length > 0 && filters['sortOrder'].modelValue == 'random'"
+                   @click="searchRecipes({page: 1})">
+                {{ $t('Random Recipes') }}
+            </v-btn>
+        </div>
 
         <v-dialog v-model="dialog">
             <v-card>
@@ -161,8 +176,10 @@
             </v-card>
         </v-dialog>
 
-        <batch-delete-dialog :items="selectedItems" model="Recipe" v-model="batchDeleteDialog" activator="model" @change="searchRecipes({page: 1})"></batch-delete-dialog>
-        <batch-edit-recipe-dialog :items="selectedItems" v-model="batchEditDialog" activator="model" @change="searchRecipes({page: page})"></batch-edit-recipe-dialog>
+        <batch-delete-dialog :items="selectedItems" model="Recipe" v-model="batchDeleteDialog" activator="model"
+                             @change="searchRecipes({page: 1})"></batch-delete-dialog>
+        <batch-edit-recipe-dialog :items="selectedItems" v-model="batchEditDialog" activator="model"
+                                  @change="searchRecipes({page: page})"></batch-edit-recipe-dialog>
 
     </v-container>
 </template>
@@ -180,7 +197,9 @@ import {useRouter} from "vue-router";
 import KeywordsBar from "@/components/display/KeywordsBar.vue";
 import {VDataTableUpdateOptions} from "@/vuetify";
 import VClosableCardTitle from "@/components/dialogs/VClosableCardTitle.vue";
-import RecipeCard from "@/components/display/RecipeCard.vue";
+import BookRecipeTile from "@/components/display/BookRecipeTile.vue";
+import RatingStars from "@/components/display/RatingStars.vue";
+import {DateTime} from "luxon";
 import {useDisplay} from "vuetify";
 import {useUserPreferenceStore} from "@/stores/UserPreferenceStore";
 import {useRouteQuery} from "@vueuse/router";
@@ -232,6 +251,7 @@ const tableHeaders = computed(() => {
     ]
     if (mdAndUp.value) {
         headers.push({title: t('Keywords'), key: 'keywords',},)
+        headers.push({title: t('Rating'), key: 'rating', width: '1%', noBreak: true},)
     }
     headers.push({title: t('Actions'), key: 'action', width: '1%', noBreak: true, align: 'end'},)
 
@@ -239,6 +259,38 @@ const tableHeaders = computed(() => {
 })
 
 const tableItemCount = ref(0)
+
+/** the line under the title: how many recipes the current search found, and which ones are on screen */
+const resultLabel = computed(() => {
+    if (loading.value) return 'Suche läuft …'
+    const total = tableItemCount.value
+    if (!total) return debouncedQuery.value ? `Nichts für „${debouncedQuery.value}“` : 'Keine Rezepte'
+    const from = (page.value - 1) * pageSize.value + 1
+    const to = Math.min(total, page.value * pageSize.value)
+    const base = total === 1 ? '1 Rezept' : `${total} Rezepte`
+    return `${base} · ${from}–${to}`
+})
+
+/** how many filters are on, for the badge on the panel button */
+const activeFilterCount = computed(() => Object.values(filters.value).filter((filter) => filter.enabled).length)
+
+const viewMode = computed({
+    get: () => useUserPreferenceStore().deviceSettings.search_viewMode,
+    set: (value: string) => {
+        useUserPreferenceStore().deviceSettings.search_viewMode = value
+    },
+})
+
+/** a tile says when the recipe was last cooked; one that never was stays plain */
+function tileMeta(recipe: RecipeOverview): string {
+    if (!recipe.lastCooked) return ''
+    const day = DateTime.fromJSDate(recipe.lastCooked).startOf('day')
+    const diff = DateTime.now().startOf('day').diff(day, 'days').days
+    if (diff <= 0) return 'heute gekocht'
+    if (diff === 1) return 'gestern gekocht'
+    if (diff < 31) return `vor ${Math.round(diff)} Tagen gekocht`
+    return `zuletzt ${day.setLocale('de').toFormat('d. MMM')}`
+}
 
 const recipes = ref([] as RecipeOverview[])
 const selectedCustomFilter = ref<null | CustomFilter>(null)
@@ -945,8 +997,148 @@ const filters = ref({
     },
 })
 
+/** sorting sits next to the results now, so changing it has to search instead of waiting for the button */
+watch(() => filters.value.sortOrder.modelValue, () => {
+    if (recipes.value.length > 0) searchRecipes({page: 1})
+})
 </script>
 
 <style scoped>
+.find {
+    max-width: 1100px;
+    padding-bottom: 4rem;
+}
 
+.find__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 1.5rem 0 1.1rem;
+}
+
+.find__title {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(2rem, 5vw, 2.8rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -.01em;
+}
+
+.find__sub {
+    margin-top: .35rem;
+    font-size: .92rem;
+    color: rgba(var(--v-theme-on-surface), .6);
+}
+
+.find__head-actions {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    flex: none;
+}
+
+.find__search {
+    max-width: 46rem;
+}
+
+.find__panel {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem 1.1rem;
+    border-radius: 14px;
+    background: rgb(var(--v-theme-surface));
+    box-shadow: 0 1px 2px rgba(60, 40, 25, .08), 0 10px 26px -22px rgba(60, 40, 25, .5);
+}
+
+.find__filter + .find__filter {
+    margin-top: .4rem;
+}
+
+.find__panel-row {
+    margin-top: .75rem;
+}
+
+.find__perpage {
+    max-width: 9rem;
+}
+
+.find__panel-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-top: 1rem;
+    padding-top: .9rem;
+    border-top: 1px solid rgba(var(--v-theme-on-surface), .08);
+}
+
+.find__toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.6rem 0 .9rem;
+    padding-bottom: .5rem;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), .08);
+}
+
+.find__sort {
+    max-width: 17rem;
+}
+
+.find__view {
+    margin-left: auto;
+    flex: none;
+}
+
+.find__table {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(60, 40, 25, .08), 0 10px 26px -22px rgba(60, 40, 25, .5);
+}
+
+.find__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem;
+}
+
+@media (min-width: 700px) {
+    .find__grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1100px) {
+    .find__grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+.find__muted {
+    color: rgba(var(--v-theme-on-surface), .45);
+}
+
+.find__empty {
+    padding: 1.4rem 1.25rem;
+    border-radius: 14px;
+    border: 1px dashed rgba(var(--v-theme-on-surface), .18);
+    background: rgba(var(--v-theme-surface), .55);
+}
+
+.find__empty-text {
+    margin-bottom: .9rem;
+    color: rgba(var(--v-theme-on-surface), .7);
+}
+
+.find__empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.find__pager {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.75rem;
+}
 </style>

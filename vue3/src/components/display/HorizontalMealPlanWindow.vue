@@ -38,8 +38,9 @@
                                         <span v-if="p.recipe">{{ p.recipe.name }}</span>
                                         <span v-else>{{ p.title }}</span>
                                     </v-list-item-title>
-                                    <v-list-item-subtitle>
-                                        {{ p.mealType.name }}
+                                    <v-list-item-subtitle class="d-flex align-center ga-2">
+                                        <span>{{ p.mealType.name }}</span>
+                                        <rating-stars v-if="p.recipe?.rating" :value="p.recipe.rating" size="sm"></rating-stars>
                                     </v-list-item-subtitle>
                                     <model-edit-dialog model="MealPlan" :item="p" v-if="!p.recipe"></model-edit-dialog>
                                     <template #append>
@@ -80,6 +81,7 @@ import {useMealPlanStore} from "@/stores/MealPlanStore";
 import {DateTime} from "luxon";
 import {homePageCols} from "@/utils/breakpoint_utils";
 import ModelEditDialog from "@/components/dialogs/ModelEditDialog.vue";
+import RatingStars from "@/components/display/RatingStars.vue";
 import {useRouter} from "vue-router";
 
 const router = useRouter()
