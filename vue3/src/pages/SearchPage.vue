@@ -1117,7 +1117,8 @@ watch(() => filters.value.sortOrder.modelValue, () => {
 }
 
 .find__search {
-    max-width: 46rem;
+    /* the chip bar and the grid set the column, so the field follows them */
+    max-width: none;
 }
 
 .find__panel {

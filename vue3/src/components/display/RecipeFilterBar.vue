@@ -4,11 +4,13 @@
             <!-- Sortieren -->
             <v-menu location="bottom start">
                 <template v-slot:activator="{ props: menu }">
-                    <button class="rfb__chip" :class="{ 'rfb__chip--on': !!state.sort }" v-bind="menu" type="button">
+                    <div class="rfb__chip" :class="{ 'rfb__chip--on': !!state.sort }" v-bind="menu" role="button" tabindex="0">
                         <i class="fa-solid fa-arrow-down-wide-short rfb__icon"/>
                         <span class="rfb__label">{{ sortLabel }}</span>
-                        <i class="fa-solid fa-chevron-down rfb__chev"/>
-                    </button>
+                        <button v-if="state.sort" class="rfb__x" type="button" aria-label="Sortierung zurücksetzen"
+                                @click.stop="setSort('')"><i class="fa-solid fa-xmark"/></button>
+                        <i v-else class="fa-solid fa-chevron-down rfb__chev"/>
+                    </div>
                 </template>
                 <v-list density="compact" class="rfb__panel">
                     <v-list-item v-for="option in sortOptions" :key="option.value"
@@ -22,11 +24,13 @@
             <!-- Bewertung -->
             <v-menu location="bottom start">
                 <template v-slot:activator="{ props: menu }">
-                    <button class="rfb__chip" :class="{ 'rfb__chip--on': state.rating !== null }" v-bind="menu" type="button">
+                    <div class="rfb__chip" :class="{ 'rfb__chip--on': state.rating !== null }" v-bind="menu" role="button" tabindex="0">
                         <i class="fa-solid fa-star rfb__icon"/>
                         <span class="rfb__label">{{ ratingLabel }}</span>
-                        <i class="fa-solid fa-chevron-down rfb__chev"/>
-                    </button>
+                        <button v-if="state.rating !== null" class="rfb__x" type="button" aria-label="Bewertung zurücksetzen"
+                                @click.stop="setRating(state.rating)"><i class="fa-solid fa-xmark"/></button>
+                        <i v-else class="fa-solid fa-chevron-down rfb__chev"/>
+                    </div>
                 </template>
                 <v-list density="compact" class="rfb__panel">
                     <v-list-item v-for="step in ratingSteps" :key="step" :active="state.rating === step"
@@ -42,11 +46,13 @@
             <!-- Arbeitszeit -->
             <v-menu location="bottom start">
                 <template v-slot:activator="{ props: menu }">
-                    <button class="rfb__chip" :class="{ 'rfb__chip--on': state.time !== null }" v-bind="menu" type="button">
+                    <div class="rfb__chip" :class="{ 'rfb__chip--on': state.time !== null }" v-bind="menu" role="button" tabindex="0">
                         <i class="fa-solid fa-clock rfb__icon"/>
                         <span class="rfb__label">{{ state.time !== null ? `bis ${state.time} Min` : 'Arbeitszeit' }}</span>
-                        <i class="fa-solid fa-chevron-down rfb__chev"/>
-                    </button>
+                        <button v-if="state.time !== null" class="rfb__x" type="button" aria-label="Arbeitszeit zurücksetzen"
+                                @click.stop="setTime(state.time)"><i class="fa-solid fa-xmark"/></button>
+                        <i v-else class="fa-solid fa-chevron-down rfb__chev"/>
+                    </div>
                 </template>
                 <v-list density="compact" class="rfb__panel">
                     <v-list-item v-for="step in timeSteps" :key="step" :active="state.time === step"
@@ -62,13 +68,15 @@
             <!-- one chip per keyword axis the library actually carries -->
             <v-menu v-for="axis in axes" :key="axis.name" location="bottom start">
                 <template v-slot:activator="{ props: menu }">
-                    <button class="rfb__chip" :class="{ 'rfb__chip--on': !!state.axes[axis.name] }" v-bind="menu" type="button">
+                    <div class="rfb__chip" :class="{ 'rfb__chip--on': !!state.axes[axis.name] }" v-bind="menu" role="button" tabindex="0">
                         <i :class="`fa-solid ${axis.icon} rfb__icon`"/>
                         <span class="rfb__label">
                             {{ state.axes[axis.name] ? `${axis.name}: ${selectedLabel(axis)}` : axis.name }}
                         </span>
-                        <i class="fa-solid fa-chevron-down rfb__chev"/>
-                    </button>
+                        <button v-if="state.axes[axis.name]" class="rfb__x" type="button" :aria-label="`${axis.name} zurücksetzen`"
+                                @click.stop="setAxis(axis.name, null)"><i class="fa-solid fa-xmark"/></button>
+                        <i v-else class="fa-solid fa-chevron-down rfb__chev"/>
+                    </div>
                 </template>
                 <div class="rfb__panel">
                     <v-text-field v-if="axis.values.length > 10" v-model="searches[axis.name]" density="compact"
@@ -357,8 +365,39 @@ function capitalise(value: string): string {
 }
 
 .rfb__chip--on {
-    border-color: rgba(var(--v-theme-primary), .55);
-    background: rgba(var(--v-theme-primary), .1);
+    border-color: rgba(var(--v-theme-primary), .8);
+    background: rgba(var(--v-theme-primary), .16);
+    color: rgba(var(--v-theme-on-surface), .98);
+}
+
+.rfb__chip--on .rfb__label {
+    font-weight: 700;
+}
+
+/* the chip stays a menu, but an active one also says how to undo itself */
+.rfb__x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: -2px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: rgba(var(--v-theme-on-surface), .1);
+    color: rgba(var(--v-theme-on-surface), .7);
+    font-size: .6rem;
+    cursor: pointer;
+}
+
+.rfb__x:hover {
+    background: rgba(var(--v-theme-on-surface), .2);
+    color: rgba(var(--v-theme-on-surface), .95);
+}
+
+.rfb__chip {
+    cursor: pointer;
 }
 
 .rfb__icon {
