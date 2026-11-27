@@ -30,11 +30,11 @@ const reason = ref('')
 const AXES = ['Herkunft', 'Hauptzutat', 'Beilage']
 
 function deepest(axis: string): Keyword | null {
-    const branch = (props.recipe.keywords ?? []).filter(keyword => keyword.name.startsWith(`${axis}::`))
+    const branch = (props.recipe.keywords ?? []).filter(keyword => path(keyword).startsWith(`${axis}::`))
     if (!branch.length) return null
     // the deepest path is the most specific one: Herkunft::Mittelmeer::Italien::Toskana
     return branch.reduce((deepestSoFar, keyword) =>
-        keyword.name.split('::').length > deepestSoFar.name.split('::').length ? keyword : deepestSoFar)
+        path(keyword).split('::').length > path(deepestSoFar).split('::').length ? keyword : deepestSoFar)
 }
 
 const anchors = computed(() => {
@@ -46,9 +46,14 @@ const why = computed(() => reason.value)
 
 let lastLoaded: number | null = null
 
-/** `Herkunft::Suedostasien::Thailand::Zentrum` -> `Zentrum` */
+/** `Herkunft::Suedostasien::Thailand::Zentrum` -> `Zentrum`; the overview serializer
+ *  sends the path in `label` and no `name`, the detail serializer sends both */
+function path(keyword: Keyword): string {
+    return keyword.name ?? (keyword as unknown as {label: string}).label ?? ''
+}
+
 function leaf(keyword: Keyword): string {
-    const parts = keyword.name.split('::')
+    const parts = path(keyword).split('::')
     return parts[parts.length - 1]
 }
 
@@ -59,7 +64,7 @@ function load() {
     if (!found.length) return
     lastLoaded = id
     const anchorIds = found.map(entry => entry.keyword.id as number)
-    const cuisinePath = found.find(entry => entry.axis === 'Herkunft')?.keyword.name ?? ''
+    const cuisinePath = found.find(entry => entry.axis === 'Herkunft') ? path(found.find(entry => entry.axis === 'Herkunft')!.keyword) : ''
 
     new ApiApi().apiRecipeList({
         keywordsOr: anchorIds,
@@ -70,13 +75,13 @@ function load() {
         // a bare OR is too generous -- sharing "Beilage::Reis" makes Agedashi Tofu a
         // neighbour of Green Curry. Score the overlap instead and keep the closest four.
         const scored = others.map(recipe => {
-            const paths = (recipe.keywords ?? []).map(keyword => keyword.name)
+            const paths = (recipe.keywords ?? []).map(keyword => path(keyword as Keyword))
             let score = 0
             if (cuisinePath && paths.some(path => path === cuisinePath || path.startsWith(`${cuisinePath}::`))) score += 4
             else if (cuisinePath && paths.some(path => path.startsWith('Herkunft::') && sharedPrefix(path, cuisinePath) >= 2)) score += 2
             for (const entry of found) {
                 if (entry.axis === 'Herkunft') continue
-                if (paths.includes(entry.keyword.name)) score += entry.axis === 'Hauptzutat' ? 3 : 1
+                if (paths.includes(path(entry.keyword))) score += entry.axis === 'Hauptzutat' ? 3 : 1
             }
             score += Math.min(recipe.timesCooked ?? 0, 5) * 0.4
             return {recipe, score}
