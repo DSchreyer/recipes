@@ -46,25 +46,57 @@ const why = computed(() => reason.value)
 
 let lastLoaded: number | null = null
 
+/** `Herkunft::Suedostasien::Thailand::Zentrum` -> `Zentrum` */
+function leaf(keyword: Keyword): string {
+    const parts = keyword.name.split('::')
+    return parts[parts.length - 1]
+}
+
 function load() {
     const id = props.recipe.id
     if (!id || id === lastLoaded) return
     const found = anchors.value
     if (!found.length) return
     lastLoaded = id
-    const ids = found.map(entry => entry.keyword.id as number)
+    const anchorIds = found.map(entry => entry.keyword.id as number)
+    const cuisinePath = found.find(entry => entry.axis === 'Herkunft')?.keyword.name ?? ''
+
     new ApiApi().apiRecipeList({
-        keywordsOr: ids,
-        pageSize: 13,
-        // the ones the household actually cooks, not the newest import
+        keywordsOr: anchorIds,
+        pageSize: 100,
         sortOrder: '-times_cooked',
     }).then((response) => {
-        const others = (response.results ?? []).filter(recipe => recipe.id !== id)
-        picks.value = others.slice(0, 4)
-        reason.value = found.map(entry => entry.keyword.label).join(' · ')
+        const others = (response.results ?? []).filter(recipe => recipe.id !== id && recipe.name)
+        // a bare OR is too generous -- sharing "Beilage::Reis" makes Agedashi Tofu a
+        // neighbour of Green Curry. Score the overlap instead and keep the closest four.
+        const scored = others.map(recipe => {
+            const paths = (recipe.keywords ?? []).map(keyword => keyword.name)
+            let score = 0
+            if (cuisinePath && paths.some(path => path === cuisinePath || path.startsWith(`${cuisinePath}::`))) score += 4
+            else if (cuisinePath && paths.some(path => path.startsWith('Herkunft::') && sharedPrefix(path, cuisinePath) >= 2)) score += 2
+            for (const entry of found) {
+                if (entry.axis === 'Herkunft') continue
+                if (paths.includes(entry.keyword.name)) score += entry.axis === 'Hauptzutat' ? 3 : 1
+            }
+            score += Math.min(recipe.timesCooked ?? 0, 5) * 0.4
+            return {recipe, score}
+        }).filter(entry => entry.score > 0)
+
+        scored.sort((a, b) => b.score - a.score)
+        picks.value = scored.slice(0, 4).map(entry => entry.recipe)
+        reason.value = found.map(entry => leaf(entry.keyword)).join(' · ')
     }).catch(() => {
         picks.value = []
     })
+}
+
+/** how many leading steps two keyword paths share: Herkunft::X::Y and Herkunft::X::Z -> 2 */
+function sharedPrefix(a: string, b: string): number {
+    const left = a.split('::')
+    const right = b.split('::')
+    let shared = 0
+    while (shared < left.length && shared < right.length && left[shared] === right[shared]) shared++
+    return shared
 }
 
 onMounted(load)
