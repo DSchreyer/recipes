@@ -24,11 +24,13 @@ import {computed} from 'vue'
  * clipped to the exact fraction, so the same number shows everywhere.
  *
  * `chip` gives the stars and the number a tinted pill, for places where the
- * rating should read as a verdict rather than decoration.
+ * rating should read as a verdict rather than decoration. Most surfaces do not
+ * need it: inside a line of text `xs` plus a quiet colour is enough, and a pill
+ * in every tile turns a footnote into furniture.
  */
 const props = withDefaults(defineProps<{
     value?: number | null
-    size?: 'sm' | 'md' | 'lg'
+    size?: 'xs' | 'sm' | 'md' | 'lg'
     chip?: boolean
     showValue?: boolean
 }>(), {
@@ -87,6 +89,10 @@ const sizeClass = computed(() => `rating-stars--${props.size}`)
     width: 1em;
     margin: 0;
     text-align: center;
+}
+
+.rating-stars--xs {
+    font-size: 0.74rem;
 }
 
 .rating-stars--sm {

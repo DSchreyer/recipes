@@ -7,13 +7,16 @@
         </div>
 
         <div class="recipe-tile__body">
-            <div class="recipe-tile__meta">{{ meta }}</div>
-            <div class="recipe-tile__name">{{ recipe.name }}</div>
-            <!-- A cooked recipe carries the household's verdict; one that was never
-                 cooked has none to show, so the tile stays as quiet as before. -->
-            <div class="recipe-tile__rating">
-                <rating-stars v-if="recipe.rating" :value="recipe.rating" size="sm" chip></rating-stars>
+            <!-- The verdict shares the meta line: a rating that costs no row of its
+                 own, so an uncooked tile is as short as it was before ratings. -->
+            <div class="recipe-tile__meta">
+                <span class="recipe-tile__meta-text">{{ meta }}</span>
+                <!-- stars only: the number would cost a third of the line, and at
+                     quarter steps the fill already says it. The aria label keeps it. -->
+                <rating-stars v-if="recipe.rating" :value="recipe.rating" size="xs"
+                              :show-value="false" class="recipe-tile__meta-rating"></rating-stars>
             </div>
+            <div class="recipe-tile__name">{{ recipe.name }}</div>
             <div class="recipe-tile__blurb">{{ recipe.description }}</div>
             <div class="recipe-tile__foot">
                 <v-chip v-for="chip in chips" :key="chip.axis" size="x-small" label variant="tonal"
@@ -122,15 +125,42 @@ function open() {
 }
 
 .recipe-tile__meta {
-    /* one line box whether or not there is text: an empty meta row used to be
-       5px shorter than "vor 4 Tagen gekocht", so the titles in a row drifted */
-    min-height: 1.2em;
-    line-height: 1.2em;
+    /* Fixed one-line box: the meta text and the star row share it, and a fixed
+       height means a rated tile does not start its title lower than its neighbour. */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 1.55em;
     font-size: .7rem;
     font-weight: 600;
-    letter-spacing: .06em;
+    letter-spacing: .04em;
     text-transform: uppercase;
     color: rgb(var(--v-theme-primary));
+}
+
+.recipe-tile__meta-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* On a phone the tile is ~170px wide and has room for one of the two, not both:
+   the label alone already needs 156px. Where there is a rating, the stars win and
+   the date stays on the recipe page; where there is none, the label keeps its room. */
+@media (max-width: 700px) {
+    .recipe-tile__meta:has(.rating-stars) .recipe-tile__meta-text {
+        display: none;
+    }
+}
+
+/* no uppercase, no tracking: the stars belong to the page, not to the label */
+.recipe-tile__meta-rating {
+    flex: none;
+    letter-spacing: normal;
+    text-transform: none;
+    /* the gold at full strength read as a badge; a notch down makes it a footnote */
+    opacity: .82;
 }
 
 .recipe-tile__name {
@@ -142,11 +172,6 @@ function open() {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.recipe-tile__rating {
-    min-height: 1.6em;
-    margin-top: 2px;
 }
 
 .recipe-tile__blurb {
