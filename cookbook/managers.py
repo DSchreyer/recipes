@@ -465,9 +465,17 @@ class RecipeQuerySet(models.QuerySet):
             .filter(similarity__gt=config.trigram_threshold)
             .values_list('pk', 'similarity')
         )
-        # Zero matches also take the correlated form: a CASE that is only a
-        # default degenerates into `ORDER BY 0.0`, which Postgres rejects.
-        if len(scores) > 500 or not scores:
+        if not scores:
+            # Nothing is similar enough to carry a score. This used to fall into the
+            # correlated form below, which re-runs the whole text scan once per row
+            # of the ingredient join: `query=K` -- one typed letter -- measured 36 s
+            # on 277 recipes, nginx gives up at 60 s, so the search box looked dead
+            # while the keystroke was still being answered. No match means score 0,
+            # and a constant needs no subquery at all.
+            return [Q(pk__in=[])], Value(0.0)
+        # Above a few hundred matches the literal CASE is the bigger problem, so
+        # the correlated form stays the fallback.
+        if len(scores) > 500:
             fuzzy_match = (
                 Recipe.objects.annotate(trigram=trigram)
                 .values('pk')
