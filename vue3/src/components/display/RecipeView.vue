@@ -91,6 +91,8 @@
 
                             <keywords-component variant="flat" class="mt-4" :keywords="recipe.keywords"></keywords-component>
 
+                            <similar-recipes :recipe="recipe"></similar-recipes>
+
                         </v-card-text>
 
                         <v-row class="text-center text-body-2 mb-1 flex-grow-0">
@@ -201,6 +203,7 @@ import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {AiProvider, ApiApi, Recipe} from "@/openapi"
 import NumberScalerDialog from "@/components/inputs/NumberScalerDialog.vue"
 import StepsOverview from "@/components/display/StepsOverview.vue";
+import SimilarRecipes from "@/components/display/SimilarRecipes.vue";
 import RecipeActivity from "@/components/display/RecipeActivity.vue";
 import CookLogQuick from "@/components/display/CookLogQuick.vue";
 import RecipeContextMenu from "@/components/inputs/RecipeContextMenu.vue";
