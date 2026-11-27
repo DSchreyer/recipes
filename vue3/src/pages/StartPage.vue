@@ -11,6 +11,22 @@
             </div>
         </header>
 
+        <section class="today__idea">
+            <span class="today__idea-label">Keine Idee?</span>
+            <div class="today__idea-row">
+                <v-btn rounded="xl" variant="tonal" size="small" class="today__idea-btn"
+                       :to="{name: 'SearchPage', query: {time: '20'}}">bis 20 Min</v-btn>
+                <v-btn rounded="xl" variant="tonal" size="small" class="today__idea-btn"
+                       :to="{name: 'SearchPage', query: {time: '30'}}">bis 30 Min</v-btn>
+                <v-btn rounded="xl" variant="tonal" size="small" class="today__idea-btn"
+                       :to="{name: 'SearchPage', query: {time: '30', rating: '4'}}">schnell &amp; gut</v-btn>
+                <v-btn rounded="xl" variant="text" size="small" class="today__idea-btn"
+                       prepend-icon="fa-solid fa-dice" :to="{name: 'SearchPage', query: {sortOrder: 'random'}}">
+                    Überrasch mich
+                </v-btn>
+            </div>
+        </section>
+
         <section class="today__section">
             <h2 class="today__h2">
                 Geplant
@@ -229,7 +245,34 @@ onMounted(() => {
     color: rgba(var(--v-theme-on-surface), .6);
 }
 
-.today__section + .today__section {
+.today__section + .today__idea {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+    padding: .2rem 0 1.1rem;
+}
+
+.today__idea-label {
+    font-size: .84rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: rgba(var(--v-theme-on-surface), .45);
+    margin-right: .2rem;
+}
+
+.today__idea-row {
+    display: flex;
+    gap: .45rem;
+    flex-wrap: wrap;
+}
+
+.today__idea-btn {
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.today__section {
     margin-top: 2.25rem;
 }
 

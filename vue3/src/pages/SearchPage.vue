@@ -215,7 +215,7 @@ import {ErrorMessageType, useMessageStore} from "@/stores/MessageStore";
 import ModelSelect from "@/components/inputs/ModelSelect.vue";
 import {VDateInput} from 'vuetify/labs/VDateInput'
 import RecipeContextMenu from "@/components/inputs/RecipeContextMenu.vue";
-import {useRouter} from "vue-router";
+import {useRoute, useRouter} from "vue-router";
 import {VDataTableUpdateOptions} from "@/vuetify";
 import VClosableCardTitle from "@/components/dialogs/VClosableCardTitle.vue";
 import BookRecipeTile from "@/components/display/BookRecipeTile.vue";
@@ -237,6 +237,7 @@ import RecipeFilterBar, {RecipeFilterState} from "@/components/display/RecipeFil
 
 const {t} = useI18n()
 const router = useRouter()
+const route = useRoute()
 const {mdAndUp} = useDisplay()
 
 const {inputValue: query, debouncedValue: debouncedQuery, signal, flush: flushQuery, reset: resetQuery} = useDebouncedSearch({routeQueryKey: 'query'})
@@ -1107,10 +1108,17 @@ const filters = ref({
  * which is a route query, a toolbar control and the paginator's "random" branch — so a
  * chip writes there and the existing watcher does the searching.
  */
+/** a link from the home screen arrives with its question already asked: ?time=30&rating=4 */
+function routeNumber(key: string): number | null {
+    const raw = route.query[key]
+    const value = Number(Array.isArray(raw) ? raw[0] : raw)
+    return Number.isFinite(value) && value > 0 ? value : null
+}
+
 const chipFilters = ref<RecipeFilterState>({
     sort: (filters.value.sortOrder.modelValue as string) ?? '',
-    rating: null,
-    time: null,
+    rating: routeNumber('rating'),
+    time: routeNumber('time'),
     axes: {},
 })
 
