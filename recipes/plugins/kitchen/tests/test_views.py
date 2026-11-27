@@ -155,8 +155,11 @@ def test_a_name_word_and_a_chip_narrow_together(kitchen):
     both = client.get(URL, {'q': 'köhler', 'protein': 'Hauptzutat::Fisch'}).content.decode()
     assert 'Köhler-Curry' in both and 'Beurre Blanc' in both
 
+    # a chip that fits nothing gives way and says so; the typed word is still the
+    # question, so both Köhler dishes stay on the page
     dead = client.get(URL, {'q': 'köhler', 'carb': 'Beilage::Kartoffel'}).content.decode()
-    assert 'Nichts heißt' in dead
+    assert 'Köhler-Curry' in dead and 'Beurre Blanc' in dead
+    assert 'Ohne Beilage' in dead
 
 
 def test_recipe_using_none_of_my_food_is_not_shown(kitchen):
