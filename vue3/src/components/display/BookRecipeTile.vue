@@ -176,12 +176,16 @@ function open() {
 
 .recipe-tile__blurb {
     font-size: .82rem;
-    min-height: 1.35em;
+    /* two lines, always reserved: one line of description inside a two-line box
+       reads as the card's own gap, and a one-line tile used to look airy while its
+       neighbour looked full */
+    min-height: 2.7em;
     line-height: 1.35;
     color: rgba(var(--v-theme-on-surface), .66);
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .recipe-tile__foot {
@@ -192,14 +196,13 @@ function open() {
     gap: 4px;
     margin-top: auto;
     padding-top: 6px;
-    /* a fixed 52px cut the second chip row in half on narrow tiles, which read as
-       a grey pill with no text; grid stretch keeps the cards in a row equal */
-    min-height: 52px;
+    /* one row of chips plus the remainder link; a fixed height used to cut the
+       second chip row in half on a phone, min-height never clips */
+    min-height: 30px;
 }
 
-/* always on its own line, so every tile in a row is exactly as tall */
+/* flows after the last chip instead of taking a line of its own */
 .recipe-tile__more {
-    flex-basis: 100%;
     text-align: left;
     border: 0;
     background: none;

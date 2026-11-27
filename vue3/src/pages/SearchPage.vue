@@ -118,19 +118,24 @@
                 </template>
 
                 <template #item.image="{item}">
-                    <v-avatar :image="item.image" size="x-large" class="mt-1 mb-1" v-if="item.image"></v-avatar>
-                    <v-avatar color="primary" variant="tonal" size="x-large" class="mt-1 mb-1" v-else>
+                    <v-avatar :image="item.image" size="40" class="my-1" v-if="item.image"></v-avatar>
+                    <v-avatar color="primary" variant="tonal" size="40" class="my-1" v-else>
                         <random-icon></random-icon>
                     </v-avatar>
                 </template>
 
+                <template #item.name="{item}">
+                    <span class="find__name" :title="item.name">{{ item.name }}</span>
+                </template>
+
                 <template #item.rating="{item}">
-                    <rating-stars v-if="item.rating" :value="item.rating" size="sm" chip></rating-stars>
+                    <rating-stars v-if="item.rating" :value="item.rating" size="xs"></rating-stars>
                     <span v-else class="find__muted">–</span>
                 </template>
 
-                <template #item.keywords="{item}">
-                    <keywords-bar :keywords="item.keywords"></keywords-bar>
+                <template #item.description="{item}">
+                    <span v-if="item.description" class="find__desc">{{ item.description }}</span>
+                    <span v-else class="find__muted">–</span>
                 </template>
 
                 <template #item.action="{item}">
@@ -194,7 +199,6 @@ import ModelSelect from "@/components/inputs/ModelSelect.vue";
 import {VDateInput} from 'vuetify/labs/VDateInput'
 import RecipeContextMenu from "@/components/inputs/RecipeContextMenu.vue";
 import {useRouter} from "vue-router";
-import KeywordsBar from "@/components/display/KeywordsBar.vue";
 import {VDataTableUpdateOptions} from "@/vuetify";
 import VClosableCardTitle from "@/components/dialogs/VClosableCardTitle.vue";
 import BookRecipeTile from "@/components/display/BookRecipeTile.vue";
@@ -250,8 +254,10 @@ const tableHeaders = computed(() => {
         {title: t('Name'), key: 'name',},
     ]
     if (mdAndUp.value) {
-        headers.push({title: t('Keywords'), key: 'keywords',},)
-        headers.push({title: t('Rating'), key: 'rating', width: '1%', noBreak: true},)
+        // the list view reads stories, not taxonomies: a two-line description says
+        // more about a recipe than four chips, and the tags are one click away
+        headers.push({title: t('Description'), key: 'description',},)
+        headers.push({title: t('Rating'), key: 'rating', width: '1%', noBreak: true, align: 'end'},)
     }
     headers.push({title: t('Actions'), key: 'action', width: '1%', noBreak: true, align: 'end'},)
 
@@ -1112,6 +1118,28 @@ watch(() => filters.value.sortOrder.modelValue, () => {
     .find__grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+}
+
+/* one line, ellipsis, full name in the tooltip: a table row that wraps its name to
+   two lines and its description to two more is a card, not a row */
+.find__name {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
+}
+
+/* two lines of prose, then an ellipsis: enough to recognise a dish, short enough
+   that four rows still fit a screen */
+.find__desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: .85rem;
+    line-height: 1.4;
+    color: rgba(var(--v-theme-on-surface), .78);
 }
 
 .find__muted {
